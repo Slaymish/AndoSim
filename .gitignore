@@ -1,0 +1,41 @@
+# Build artifacts
+build/
+*.o
+*.so
+*.pyd
+*.dll
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Blender
+*.blend1
+*.blend2
+*.blend3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+cache/
+*.cache
+.github/copilot-instructions.md

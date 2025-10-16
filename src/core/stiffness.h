@@ -1,0 +1,97 @@
+#pragma once
+
+#include "types.h"
+#include "mesh.h"
+#include "state.h"
+#include "constraints.h"
+
+namespace ando_barrier {
+
+// Dynamic elasticity-inclusive stiffness computation
+// Section 3.3-3.4 of the paper: k = m/Δt² + n·(H n)
+class Stiffness {
+public:
+    // Contact stiffness (Eq. 5): k = m/Δt² + n·(H n)
+    // With m/ĝ² takeover near tiny gaps
+    static Real compute_contact_stiffness(
+        Real mass,              // Vertex or average mass
+        Real dt,                // Time step
+        Real gap,               // Current gap distance
+        const Vec3& normal,     // Contact normal
+        const Mat3& H_block,    // Elasticity Hessian 3×3 block for this vertex
+        Real gap_threshold = 1e-4  // Threshold for takeover term
+    );
+    
+    // Pin stiffness (Eq. 6): k_i = m_i/Δt² + w_i·(H_i w_i)
+    // where w_i = x_i - P_fixed
+    static Real compute_pin_stiffness(
+        Real mass,              // Vertex mass
+        Real dt,                // Time step
+        const Vec3& offset,     // w_i = current_pos - pin_target
+        const Mat3& H_block     // Elasticity Hessian 3×3 block for this vertex
+    );
+    
+    // Wall stiffness (Eq. 7): k_wall = m_i/(g_wall)² + n_wall·(H_i n_wall)
+    static Real compute_wall_stiffness(
+        Real mass,              // Vertex mass
+        Real gap,               // Wall gap distance
+        const Vec3& normal,     // Wall normal
+        const Mat3& H_block     // Elasticity Hessian 3×3 block for this vertex
+    );
+    
+    // Compute all contact stiffnesses for current constraints
+    static void compute_all_stiffnesses(
+        const Mesh& mesh,
+        const State& state,
+        const Constraints& constraints,
+        Real dt,
+        const SparseMatrix& H_elastic  // Global elasticity Hessian
+    );
+    
+private:
+    // Extract 3×3 Hessian block for a vertex from sparse global Hessian
+    static Mat3 extract_hessian_block(const SparseMatrix& H, Index vertex_idx);
+    
+    // Ensure SPD and add regularization if needed
+    static void enforce_spd(Mat3& H, Real epsilon = 1e-8);
+};
+
+} // namespace ando_barrier
+
+class StrainLimiting {
+public:
+    static Real compute_energy(const Mat2& F, Real limit, Real tau, Real epsilon);
+};
+
+class Collision {
+public:
+    static void detect_collisions();
+};
+
+class LineSearch {
+public:
+    static Real search(const VecX& x, const VecX& direction, Real extension = 1.25);
+};
+
+class Integrator {
+public:
+    static void step(Real dt, Real beta_max);
+};
+
+class MatrixAssembly {
+public:
+    static void assemble();
+};
+
+class PCGSolver {
+public:
+    static bool solve(const SparseMatrix& A, const VecX& b, VecX& x, 
+                     Real tol, int max_iters);
+};
+
+class Friction {
+public:
+    static Real compute_energy();
+};
+
+} // namespace ando_barrier
