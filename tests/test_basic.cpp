@@ -47,6 +47,8 @@ void test_stiffness_takeover() {
 
 void test_collision_bvh();
 void test_collision_point_triangle();
+void test_barrier_pin_gradient();
+void test_barrier_wall_gradient();
 
 int main() {
     std::cout << "\n========= Stiffness Tests =========\n" << std::endl;
@@ -57,6 +59,10 @@ int main() {
     std::cout << "\n========= Collision Tests =========\n" << std::endl;
     test_collision_bvh();
     test_collision_point_triangle();
+    
+    std::cout << "\n========= Barrier Gradient Tests =========\n" << std::endl;
+    test_barrier_pin_gradient();
+    test_barrier_wall_gradient();
     
     std::cout << "\n========= All Tests Passed =========\n" << std::endl;
     return 0;
@@ -116,5 +122,57 @@ void test_collision_point_triangle() {
     std::cout << "  Distance: " << distance << std::endl;
     std::cout << "  Normal: " << normal.transpose() << std::endl;
     std::cout << "  ✓ Point-triangle distance passed" << std::endl;
+}
+
+
+void test_barrier_pin_gradient() {
+    std::cout << "Testing pin barrier gradient..." << std::endl;
+    
+    // Create simple state with one vertex
+    State state;
+    state.positions.push_back(Vec3(1.0, 0.0, 0.0));
+    
+    Vec3 pin_target(0.0, 0.0, 0.0);
+    Real gap = 1.0;  // Distance from target
+    Real g_max = 2.0;
+    Real k_bar = 1000.0;
+    
+    // Compute gradient
+    VecX gradient = VecX::Zero(3);
+    Barrier::compute_pin_gradient(0, pin_target, state, g_max, k_bar, gradient);
+    
+    // Gradient should point away from target (repulsive force)
+    assert(gradient[0] < 0.0);  // Force in -x direction
+    assert(std::abs(gradient[1]) < 0.01);
+    assert(std::abs(gradient[2]) < 0.01);
+    
+    std::cout << "  Gradient: " << gradient.transpose() << std::endl;
+    std::cout << "  ✓ Pin barrier gradient passed" << std::endl;
+}
+
+void test_barrier_wall_gradient() {
+    std::cout << "Testing wall barrier gradient..." << std::endl;
+    
+    // Create state with vertex near wall
+    State state;
+    state.positions.push_back(Vec3(0.0, 0.0, 0.5));  // 0.5m above wall
+    
+    Vec3 wall_normal(0.0, 0.0, 1.0);  // Wall at z=0, normal points up
+    Real wall_offset = 0.0;
+    Real g_max = 1.0;
+    Real k_bar = 1000.0;
+    
+    // Compute gradient
+    VecX gradient = VecX::Zero(3);
+    Barrier::compute_wall_gradient(0, wall_normal, wall_offset, state, 
+                                   g_max, k_bar, gradient);
+    
+    // Gradient should point upward (away from wall)
+    assert(std::abs(gradient[0]) < 0.01);
+    assert(std::abs(gradient[1]) < 0.01);
+    assert(gradient[2] < 0.0);  // Repulsive force in +z direction
+    
+    std::cout << "  Gradient: " << gradient.transpose() << std::endl;
+    std::cout << "  ✓ Wall barrier gradient passed" << std::endl;
 }
 
