@@ -12,6 +12,9 @@ struct PinConstraint {
     bool active = true;
 };
 
+// Alias for convenience
+using Pin = PinConstraint;
+
 // Wall constraint: plane defined by normal and offset
 struct WallConstraint {
     Vec3 normal;      // Plane normal (normalized)

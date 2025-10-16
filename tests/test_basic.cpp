@@ -5,6 +5,8 @@
 #include "../src/core/elasticity.h"
 #include "../src/core/stiffness.h"
 #include "../src/core/collision.h"
+#include "../src/core/line_search.h"
+#include "../src/core/constraints.h"
 #include <iostream>
 #include <cassert>
 #include <cmath>
@@ -49,6 +51,8 @@ void test_collision_bvh();
 void test_collision_point_triangle();
 void test_barrier_pin_gradient();
 void test_barrier_wall_gradient();
+void test_line_search_wall_constraint();
+void test_line_search_contact_constraint();
 
 int main() {
     std::cout << "\n========= Stiffness Tests =========\n" << std::endl;
@@ -63,6 +67,10 @@ int main() {
     std::cout << "\n========= Barrier Gradient Tests =========\n" << std::endl;
     test_barrier_pin_gradient();
     test_barrier_wall_gradient();
+    
+    std::cout << "\n========= Line Search Tests =========\n" << std::endl;
+    test_line_search_wall_constraint();
+    test_line_search_contact_constraint();
     
     std::cout << "\n========= All Tests Passed =========\n" << std::endl;
     return 0;
@@ -176,3 +184,106 @@ void test_barrier_wall_gradient() {
     std::cout << "  ✓ Wall barrier gradient passed" << std::endl;
 }
 
+
+void test_line_search_wall_constraint() {
+    std::cout << "Testing line search with wall constraint..." << std::endl;
+    
+    // Create mesh with single triangle
+    std::vector<Vec3> verts = {
+        Vec3(0, 0, 0.1),  // Vertex above wall
+        Vec3(1, 0, 0.1),
+        Vec3(0.5, 1, 0.1)
+    };
+    std::vector<Triangle> tris = {Triangle(0, 1, 2)};
+    
+    Mesh mesh;
+    Material mat;
+    mesh.initialize(verts, tris, mat);
+    
+    State state;
+    state.initialize(mesh);
+    
+    // Direction that would penetrate wall (downward)
+    VecX direction = VecX::Zero(9);  // 3 vertices × 3 components
+    direction[2] = -0.15;  // Move first vertex down through wall at z=0
+    
+    // Wall constraint
+    Vec3 wall_normal(0, 0, 1);
+    Real wall_offset = 0.0;
+    
+    // Empty contacts and pins
+    std::vector<ContactPair> contacts;
+    std::vector<Pin> pins;
+    
+    // Search with extension=1.0 for simpler test
+    Real alpha = LineSearch::search(mesh, state, direction, contacts, pins, 
+                                   wall_normal, wall_offset, 1.0);
+    
+    // Alpha should be reduced to prevent penetration
+    assert(alpha < 1.0);
+    assert(alpha > 0.0);
+    
+    std::cout << "  Alpha reduced to: " << alpha << " (< 1.0)" << std::endl;
+    std::cout << "  ✓ Wall constraint line search passed" << std::endl;
+}
+
+void test_line_search_contact_constraint() {
+    std::cout << "Testing line search with contact constraint..." << std::endl;
+    
+    // Create simple mesh with one moving vertex and one triangle
+    std::vector<Vec3> verts = {
+        // Moving vertex
+        Vec3(0.5, 0.5, 0.5),
+        // Triangle at z=0 (horizontal)
+        Vec3(0, 0, 0),
+        Vec3(1, 0, 0),
+        Vec3(0.5, 1, 0)
+    };
+    std::vector<Triangle> tris = {
+        Triangle(1, 2, 3)  // Only one triangle
+    };
+    
+    Mesh mesh;
+    Material mat;
+    mesh.initialize(verts, tris, mat);
+    
+    State state;
+    state.initialize(mesh);
+    
+    // Direction: move vertex 0 straight down through the triangle
+    VecX direction = VecX::Zero(12);  // 4 vertices × 3 components
+    direction[2] = -1.0;   // Vertex 0 moves down 1 unit (would penetrate)
+    
+    // Create contact constraint for vertex 0 vs triangle
+    ContactPair contact;
+    contact.type = ContactType::POINT_TRIANGLE;
+    contact.idx0 = 0;  // Moving vertex
+    contact.idx1 = 1;  // Triangle vertices
+    contact.idx2 = 2;
+    contact.idx3 = 3;
+    contact.gap = 0.5;
+    contact.normal = Vec3(0, 0, 1);
+    
+    std::vector<ContactPair> contacts = {contact};
+    std::vector<Pin> pins;
+    
+    // No wall
+    Vec3 wall_normal(0, 0, 0);
+    Real wall_offset = 0.0;
+    
+    // Search with extension=1.0 for simplicity
+    Real alpha = LineSearch::search(mesh, state, direction, contacts, pins,
+                                   wall_normal, wall_offset, 1.0);
+    
+    std::cout << "  Alpha returned: " << alpha << std::endl;
+    
+    // Alpha should be reduced to prevent collision (full step would penetrate)
+    if (alpha >= 1.0) {
+        std::cout << "  WARNING: Alpha not reduced! Expected < 1.0" << std::endl;
+        std::cout << "  This might indicate CCD is not detecting the collision." << std::endl;
+    }
+    assert(alpha < 1.0);
+    
+    std::cout << "  Alpha reduced to: " << alpha << " (< 1.0)" << std::endl;
+    std::cout << "  ✓ Contact constraint line search passed" << std::endl;
+}

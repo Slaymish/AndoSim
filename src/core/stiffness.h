@@ -63,11 +63,7 @@ public:
 };
 
 // Collision detection moved to collision.h
-
-class LineSearch {
-public:
-    static Real search(const VecX& x, const VecX& direction, Real extension = 1.25);
-};
+// Line search moved to line_search.h
 
 class Integrator {
 public:
