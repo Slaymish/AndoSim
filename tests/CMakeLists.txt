@@ -21,3 +21,18 @@ target_include_directories(test_basic PRIVATE
 
 # Register test
 add_test(NAME BasicTest COMMAND test_basic)
+
+# Test executable for barrier derivative validation
+add_executable(test_barrier_derivatives
+    test_barrier_derivatives.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/barrier.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+)
+target_include_directories(test_barrier_derivatives PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${EIGEN3_INCLUDE_DIR}
+)
+
+# Register barrier test
+add_test(NAME BarrierDerivativesTest COMMAND test_barrier_derivatives)

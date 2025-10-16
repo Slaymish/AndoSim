@@ -226,7 +226,7 @@ BlenderSim/
 ├── blender_addon/
 │   ├── __init__.py        ✓ Add-on entry point
 │   ├── properties.py      ✓ Blender property definitions
-│   ├── operators.py       ✓ Simulation operators
+│   ├── operators.py       ✓ Simulation operators (COMPLETE)
 │   └── ui.py              ✓ UI panels
 ├── demos/
 │   ├── demo_utils.h       ✓ OBJ export and scene generation
