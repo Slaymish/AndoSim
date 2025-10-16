@@ -1,191 +1,78 @@
-# Standalone Python Demos
+# Ando Barrier Physics Engine - Demo Scenes
 
-This directory contains standalone Python demonstration scripts that can run the Ando Barrier physics simulation **without Blender**. These demos are useful for:
+This directory contains standalone demo executables that showcase the physics engine without requiring Blender.
 
-- Testing the C++ core functionality
-- Understanding the physics algorithms
-- Debugging and development
-- Educational purposes
+## Demos
 
-## Prerequisites
+### 1. Cloth Draping (`demo_cloth_drape`)
 
-1. **Build the project first:**
-   ```bash
-   cd ..
-   ./build.sh
-   ```
-
-2. **Install Python dependencies:**
-   ```bash
-   pip install numpy matplotlib
-   ```
-
-## Available Demos
-
-### 1. Barrier Functions Demo (`demo_barrier.py`)
-
-Visualizes the cubic barrier energy, gradient, and Hessian as functions of gap distance.
-
-**Run:**
-```bash
-python demo_barrier.py
-```
-
-**What it shows:**
-- Barrier energy curve V(g, ḡ, k)
-- Barrier gradient (repulsive force)
-- Barrier Hessian (contact stiffness)
-- C² smoothness at the boundary g = ḡ
-- Active/inactive regions
-
-### 2. Elasticity Demo (`demo_elasticity.py`)
-
-Demonstrates ARAP elasticity energy and forces on a deformable cloth mesh.
-
-**Run:**
-```bash
-python demo_elasticity.py
-```
-
-**What it shows:**
-- Creating a cloth mesh (5×5 grid)
-- Computing rest-state configuration
-- Deforming the mesh (stretching)
-- Computing elastic energy and forces
-- 3D visualization with force vectors
+Demonstrates cloth falling and draping onto a ground plane with pinned corners.
 
 **Features:**
-- Mesh initialization from numpy arrays
-- Material properties (Young's modulus, Poisson ratio)
-- Energy computation at rest and under deformation
-- Gradient (force) computation
-- Interactive 3D visualization
+- 1m × 1m cloth mesh (20×20 resolution)
+- Two pinned corners (top left and right)
+- Ground plane collision at y=0
+- Gravity simulation
+- Soft cloth material
 
-## Output Examples
+**Output:** `output/cloth_drape/frame_XXXX.obj`
 
-### Barrier Demo
-```
-Barrier parameters:
-  g_max (barrier domain): 1.0
-  k (stiffness): 100.0
+### 2. Cloth Wall Collision (`demo_cloth_wall`)
 
-Barrier properties:
-  Active domain: g ∈ (0, 1.0)
-  Max energy: 1.839e+01
-  Max gradient magnitude: 1.506e+02
-  Max Hessian: 1.041e+03
-```
+Demonstrates cloth being thrown at a wall and falling to the floor.
 
-### Elasticity Demo
-```
-1. Creating 5x5 cloth patch...
-   Vertices: 25
-   Triangles: 32
+**Features:**
+- 0.5m × 0.5m cloth mesh (15×15 resolution)
+- Initial velocity toward wall
+- Wall collision at z=0
+- Floor collision at y=0
+- No pins (free-falling cloth)
 
-2. Initializing mesh with material properties...
-   Young's modulus: 1000000.0 Pa
-   Poisson ratio: 0.3
-   Thickness: 0.001 m
+**Output:** `output/cloth_wall/frame_XXXX.obj`
 
-3. Computing elasticity energy at rest configuration...
-   Energy at rest: 0.000000e+00 J
+## Building
 
-4. Deforming mesh (stretching top edge by 20%)...
-   Energy after deformation: 5.123456e-03 J
-   Energy increase: 5.123456e-03 J
+Demos are built automatically with the main project:
 
-5. Computing elastic forces...
-   Max force magnitude: 2.456789e-02 N
-   RMS force: 8.901234e-03 N
+```bash
+./build.sh
 ```
 
-## Writing Your Own Demos
+Executables will be in `build/demos/`:
+- `build/demos/demo_cloth_drape`
+- `build/demos/demo_cloth_wall`
 
-Here's a minimal template:
+## Running
 
-```python
-#!/usr/bin/env python3
-import sys
-import os
-import numpy as np
+```bash
+# Cloth draping demo
+./build/demos/demo_cloth_drape
 
-# Add build directory to path
-build_dir = os.path.join(os.path.dirname(__file__), '..', 'build')
-sys.path.insert(0, build_dir)
-
-import ando_barrier_core as abc
-
-# Create mesh
-vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
-triangles = np.array([[0, 1, 2]], dtype=np.int32)
-
-# Initialize
-mesh = abc.Mesh()
-material = abc.Material()
-material.youngs_modulus = 1e6
-mesh.initialize(vertices, triangles, material)
-
-# Compute
-elasticity = abc.Elasticity()
-energy = elasticity.compute_energy(mesh, abc.State())
-print(f"Energy: {energy}")
+# Cloth wall collision demo
+./build/demos/demo_cloth_wall
 ```
 
-## API Reference
+## Visualization
 
-### Core Classes
+### Quick Preview: Python Viewer
 
-- **`abc.Mesh()`**: Mesh representation with rest-state data
-  - `.initialize(vertices, triangles, material)`
-  - `.vertices`: Current vertex positions (N×3)
-  - `.compute_F(face_idx)`: Deformation gradient for face
-
-- **`abc.Material()`**: Material properties
-  - `.youngs_modulus`: Young's modulus (Pa)
-  - `.poisson_ratio`: Poisson ratio (dimensionless)
-  - `.density`: Density (kg/m³)
-  - `.thickness`: Shell thickness (m)
-
-- **`abc.State()`**: Physics state
-  - `.initialize(mesh)`
-  - `.positions`, `.velocities`, `.masses`
-
-- **`abc.Elasticity()`**: Elasticity energy and forces
-  - `.compute_energy(mesh, state) -> float`
-  - `.compute_gradient(mesh, state, gradient_out)`
-  - `.compute_hessian(mesh, state, triplets_out)`
-
-- **`abc.Barrier()`**: Cubic barrier functions
-  - `.compute_energy(g, g_max, k) -> float`
-  - `.compute_gradient(g, g_max, k) -> float`
-  - `.compute_hessian(g, g_max, k) -> float`
-
-## Troubleshooting
-
-**Import Error:**
+```bash
+pip install matplotlib numpy
+python demos/view_sequence.py "output/cloth_drape/frame_*.obj"
 ```
-ImportError: No module named 'ando_barrier_core'
-```
-→ Build the project first: `cd .. && ./build.sh`
 
-**Missing matplotlib:**
-```
-ModuleNotFoundError: No module named 'matplotlib'
-```
-→ Install: `pip install matplotlib`
+**Controls:** Space/→ (next), ← (prev), Q (quit)
 
-**Shared library error:**
-```
-ImportError: ... ando_barrier_core.cpython-*.so: cannot open shared object file
-```
-→ Make sure you're running from the `demos/` directory or adjust the `sys.path` correctly.
+### Blender / MeshLab
 
-## Next Steps
+Import OBJ sequence or use online viewers like https://3dviewer.net/
 
-- **Task 4+**: These demos will be extended as more features are implemented (dynamic stiffness, contacts, time integration)
-- **Visualization**: Consider adding export to common formats (OBJ, VTK) for external visualization
-- **Animation**: Add time-stepping demos once the integrator is complete
+## Performance
 
-## License
+~5-10 FPS on ARM64 Linux (200-250 frames in 20-50 seconds)
 
-Same as parent project (see ../LICENSE if applicable).
+## Customization
+
+Edit demo source files to change mesh resolution, materials, simulation parameters, or gravity.
+
+See `demos/README_cpp.md` for detailed documentation.

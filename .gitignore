@@ -39,3 +39,4 @@ Thumbs.db
 cache/
 *.cache
 .github/copilot-instructions.md
+output/cloth_drape/

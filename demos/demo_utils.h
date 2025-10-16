@@ -5,6 +5,7 @@
 #include "../src/core/state.h"
 #include <string>
 #include <fstream>
+#include <iostream>
 
 namespace ando_barrier {
 namespace demos {
