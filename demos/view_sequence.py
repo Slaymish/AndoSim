@@ -60,11 +60,17 @@ def plot_frame(ax, vertices, faces, title=""):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python view_sequence.py <path_to_obj_files>")
-        print("Example: python view_sequence.py output/cloth_drape/frame_*.obj")
+        print("Usage: python view_sequence.py <directory_or_pattern>")
+        print("Example: python view_sequence.py output/cloth_drape")
+        print("   or:   python view_sequence.py output/cloth_drape/frame_*.obj")
         sys.exit(1)
     
     pattern = sys.argv[1]
+    
+    # If it's a directory, add the frame_*.obj pattern
+    if os.path.isdir(pattern):
+        pattern = os.path.join(pattern, "frame_*.obj")
+    
     files = sorted(glob.glob(pattern))
     
     if not files:
