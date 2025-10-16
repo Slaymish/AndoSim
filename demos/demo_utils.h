@@ -75,19 +75,19 @@ public:
     /**
      * Create a rectangular cloth mesh
      * 
-     * @param width Width in world units
-     * @param height Height in world units
+     * @param width Width in world units (X direction)
+     * @param depth Depth in world units (Z direction)
      * @param res_x Number of vertices in x direction
-     * @param res_y Number of vertices in y direction
+     * @param res_z Number of vertices in z direction
      * @param center_x Center position x
-     * @param center_y Center position y
+     * @param center_y Center position y (height)
      * @param center_z Center position z
      * @param vertices Output vertex positions
      * @param triangles Output triangle indices
      */
     static void create_cloth_mesh(
-        Real width, Real height,
-        int res_x, int res_y,
+        Real width, Real depth,
+        int res_x, int res_z,
         Real center_x, Real center_y, Real center_z,
         std::vector<Vec3>& vertices,
         std::vector<Triangle>& triangles) {
@@ -95,22 +95,22 @@ public:
         vertices.clear();
         triangles.clear();
         
-        // Generate grid vertices
-        for (int j = 0; j < res_y; ++j) {
+        // Generate grid vertices in XZ plane (Y is up)
+        for (int j = 0; j < res_z; ++j) {
             for (int i = 0; i < res_x; ++i) {
                 Real u = static_cast<Real>(i) / (res_x - 1);
-                Real v = static_cast<Real>(j) / (res_y - 1);
+                Real v = static_cast<Real>(j) / (res_z - 1);
                 
                 Real x = center_x + (u - 0.5) * width;
-                Real y = center_y + (v - 0.5) * height;
-                Real z = center_z;
+                Real y = center_y;  // Constant height (horizontal cloth)
+                Real z = center_z + (v - 0.5) * depth;
                 
                 vertices.push_back(Vec3(x, y, z));
             }
         }
         
         // Generate triangles
-        for (int j = 0; j < res_y - 1; ++j) {
+        for (int j = 0; j < res_z - 1; ++j) {
             for (int i = 0; i < res_x - 1; ++i) {
                 int v0 = j * res_x + i;
                 int v1 = j * res_x + (i + 1);
@@ -127,8 +127,8 @@ public:
     /**
      * Create a ground plane mesh
      * 
-     * @param size Size of plane
-     * @param resolution Number of subdivisions
+     * @param size Size of plane (width and depth)
+     * @param resolution Number of subdivisions per side
      * @param height Y-coordinate of plane
      * @param vertices Output vertex positions
      * @param triangles Output triangle indices

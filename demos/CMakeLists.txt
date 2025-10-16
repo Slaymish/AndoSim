@@ -42,3 +42,16 @@ target_include_directories(demo_cloth_wall PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
     ${EIGEN3_INCLUDE_DIR}
 )
+
+# Demo 3: Simple falling test (debugging)
+add_executable(demo_simple_fall
+    demo_simple_fall.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/elasticity.cpp
+)
+
+target_include_directories(demo_simple_fall PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${EIGEN3_INCLUDE_DIR}
+)
