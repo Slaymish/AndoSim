@@ -129,7 +129,21 @@
 - ✓ Integration with Newton iterations
 
 **Task 10: Friction** - Not Started  
-**Task 11: Blender Integration** - Partial (UI complete, operators stubbed)  
+**Task 11: Blender Integration** ✓ MOSTLY COMPLETE
+- ✓ UI panels (complete)
+- ✓ Property system (complete)
+- ✓ **Baking implementation with shape keys**
+- ✓ **Pin constraint extraction from vertex groups**
+- ✓ **Ground plane support**
+- ✓ **Reset operator**
+- ✓ **Frame-by-frame simulation loop**
+- ✓ **User documentation (BLENDER_GUIDE.md)**
+- [ ] Visualization overlays
+  - [ ] Gap heatmap
+  - [ ] Contact normals
+  - [ ] Strain visualization
+- [ ] Diagnostics logging to UI
+- [ ] Export helpers beyond shape keys  
 **Task 12: Demo Scenes** ✓ COMPLETE (Standalone C++ Demos)
 - ✓ Demo infrastructure (OBJ export, scene generation)
 - ✓ `demo_cloth_drape`: Pinned cloth falling onto ground
