@@ -62,10 +62,7 @@ public:
     static Real compute_energy(const Mat2& F, Real limit, Real tau, Real epsilon);
 };
 
-class Collision {
-public:
-    static void detect_collisions();
-};
+// Collision detection moved to collision.h
 
 class LineSearch {
 public:
