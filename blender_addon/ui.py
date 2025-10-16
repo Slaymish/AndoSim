@@ -58,10 +58,18 @@ class ANDO_PT_contact_panel(Panel):
         layout.prop(props, "wall_gap")
         layout.prop(props, "enable_ccd")
         
+        # Ground plane
+        layout.separator()
+        box = layout.box()
+        box.prop(props, "enable_ground_plane")
+        if props.enable_ground_plane:
+            box.prop(props, "ground_plane_height")
+        
         # Constraint operators
         layout.separator()
-        layout.operator("ando.add_pin_constraint")
-        layout.operator("ando.add_wall_constraint")
+        layout.label(text="Add Constraints:")
+        layout.operator("ando.add_pin_constraint", icon='PINNED')
+        layout.operator("ando.add_wall_constraint", icon='MESH_PLANE')
 
 class ANDO_PT_friction_panel(Panel):
     """Friction settings panel"""
@@ -116,10 +124,11 @@ class ANDO_PT_material_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        obj = context.active_object
+        props = context.scene.ando_barrier
+        mat_props = props.material_properties
         
-        if obj and obj.type == 'MESH':
-            mat_props = obj.ando_barrier_material
+        if context.active_object and context.active_object.type == 'MESH':
+            layout.label(text="Material for active mesh:")
             layout.prop(mat_props, "youngs_modulus")
             layout.prop(mat_props, "poisson_ratio")
             layout.prop(mat_props, "density")

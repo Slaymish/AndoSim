@@ -164,6 +164,28 @@ class AndoBarrierSceneProperties(PropertyGroup):
         max=50.0,
     )
     
+    strain_tau: FloatProperty(
+        name="Strain τ",
+        description="Strain tau parameter (usually equals strain epsilon)",
+        default=0.05,
+        min=0.001,
+        max=0.5,
+    )
+    
+    # Ground plane
+    enable_ground_plane: BoolProperty(
+        name="Enable Ground Plane",
+        description="Add a ground plane collision constraint",
+        default=True,
+    )
+    
+    ground_plane_height: FloatProperty(
+        name="Ground Height",
+        description="Height of ground plane",
+        default=0.0,
+        unit='LENGTH',
+    )
+    
     # Cache settings
     cache_enabled: BoolProperty(
         name="Enable Caching",
@@ -182,6 +204,13 @@ class AndoBarrierSceneProperties(PropertyGroup):
         description="Last frame to cache",
         default=250,
     )
+    
+    # Material properties (nested)
+    material_properties: PointerProperty(
+        type=AndoBarrierMaterialProperties,
+        name="Material",
+        description="Material properties for this simulation",
+    )
 
 classes = (
     AndoBarrierMaterialProperties,
@@ -192,12 +221,10 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     
-    bpy.types.Object.ando_barrier_material = PointerProperty(type=AndoBarrierMaterialProperties)
     bpy.types.Scene.ando_barrier = PointerProperty(type=AndoBarrierSceneProperties)
 
 def unregister():
     del bpy.types.Scene.ando_barrier
-    del bpy.types.Object.ando_barrier_material
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
