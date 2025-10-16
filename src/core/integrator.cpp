@@ -115,11 +115,29 @@ Real Integrator::inner_newton_step(
             std::cerr << "PCG did not converge in Newton iteration " << newton_iter << std::endl;
         }
         
+        // Extract active pins from constraints
+        std::vector<Pin> pins_for_search;
+        for (const auto& pin : constraints.pins) {
+            if (pin.active) {
+                pins_for_search.push_back(pin);
+            }
+        }
+        
+        // Extract wall from constraints (use first active wall)
+        Vec3 wall_normal(0, 0, 0);
+        Real wall_offset = 0.0;
+        for (const auto& wall : constraints.walls) {
+            if (wall.active) {
+                wall_normal = wall.normal;
+                wall_offset = wall.offset;
+                break;  // Use first active wall
+            }
+        }
+        
         // Line search for feasible α
         Real alpha = LineSearch::search(
             mesh, state, direction, contacts,
-            std::vector<Pin>(),  // TODO: extract from constraints
-            Vec3(0, 0, 1), 0.0,  // TODO: extract wall from constraints
+            pins_for_search, wall_normal, wall_offset,
             1.25  // Extended direction
         );
         
