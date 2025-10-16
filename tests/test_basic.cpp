@@ -7,6 +7,7 @@
 #include "../src/core/collision.h"
 #include "../src/core/line_search.h"
 #include "../src/core/constraints.h"
+#include "../src/core/pcg_solver.h"
 #include <iostream>
 #include <cassert>
 #include <cmath>
@@ -53,6 +54,7 @@ void test_barrier_pin_gradient();
 void test_barrier_wall_gradient();
 void test_line_search_wall_constraint();
 void test_line_search_contact_constraint();
+void test_pcg_solver();
 
 int main() {
     std::cout << "\n========= Stiffness Tests =========\n" << std::endl;
@@ -71,6 +73,9 @@ int main() {
     std::cout << "\n========= Line Search Tests =========\n" << std::endl;
     test_line_search_wall_constraint();
     test_line_search_contact_constraint();
+    
+    std::cout << "\n========= Solver Tests =========\n" << std::endl;
+    test_pcg_solver();
     
     std::cout << "\n========= All Tests Passed =========\n" << std::endl;
     return 0;
@@ -286,4 +291,48 @@ void test_line_search_contact_constraint() {
     
     std::cout << "  Alpha reduced to: " << alpha << " (< 1.0)" << std::endl;
     std::cout << "  ✓ Contact constraint line search passed" << std::endl;
+}
+
+void test_pcg_solver() {
+    std::cout << "Testing PCG solver..." << std::endl;
+    
+    // Create a simple SPD system: A = I + small dense matrix
+    const int n = 9;  // 3 vertices × 3 components
+    SparseMatrix A(n, n);
+    
+    std::vector<Triplet> triplets;
+    
+    // Diagonal (identity)
+    for (int i = 0; i < n; ++i) {
+        triplets.push_back(Triplet(i, i, 2.0));
+    }
+    
+    // Add some off-diagonal terms to make it interesting
+    triplets.push_back(Triplet(0, 1, 0.5));
+    triplets.push_back(Triplet(1, 0, 0.5));
+    triplets.push_back(Triplet(3, 4, 0.3));
+    triplets.push_back(Triplet(4, 3, 0.3));
+    
+    A.setFromTriplets(triplets.begin(), triplets.end());
+    
+    // Right-hand side
+    VecX b = VecX::Ones(n);
+    
+    // Initial guess
+    VecX x = VecX::Zero(n);
+    
+    // Solve
+    bool converged = PCGSolver::solve(A, b, x, 1e-6, 100);
+    
+    assert(converged);
+    
+    // Check residual
+    VecX r = b - A * x;
+    Real residual = r.norm();
+    
+    std::cout << "  Solution norm: " << x.norm() << std::endl;
+    std::cout << "  Residual norm: " << residual << std::endl;
+    assert(residual < 1e-3);
+    
+    std::cout << "  ✓ PCG solver passed" << std::endl;
 }

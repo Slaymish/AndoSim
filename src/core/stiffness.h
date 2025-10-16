@@ -64,21 +64,12 @@ public:
 
 // Collision detection moved to collision.h
 // Line search moved to line_search.h
-
-class Integrator {
-public:
-    static void step(Real dt, Real beta_max);
-};
+// Integrator moved to integrator.h
+// PCGSolver moved to pcg_solver.h
 
 class MatrixAssembly {
 public:
     static void assemble();
-};
-
-class PCGSolver {
-public:
-    static bool solve(const SparseMatrix& A, const VecX& b, VecX& x, 
-                     Real tol, int max_iters);
 };
 
 class Friction {
