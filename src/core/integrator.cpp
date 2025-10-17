@@ -15,6 +15,10 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     const int n = static_cast<int>(state.num_vertices());
     const Real dt = params.dt;
     
+    // Cache initial positions for velocity update (Section 3.6)
+    VecX x_old;
+    state.flatten_positions(x_old);
+    
     // 1. Predict positions: x̂ = x + dt*v (simple forward Euler prediction)
     VecX x_target;
     state.flatten_positions(x_target);
@@ -59,11 +63,12 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
         inner_newton_step(mesh, state, x_target, contacts, constraints, params, beta);
     }
     
-    // 5. Update velocities: v = Δx / (β Δt)
+    // 5. Update velocities: v = (x_new - x_old) / (β Δt) (Section 3.6)
+    // Note: x_old cached before integration, x_new is current state after Newton steps
     if (beta > 1e-6) {
         VecX x_new;
         state.flatten_positions(x_new);
-        VecX dx = x_new - x_target;
+        VecX dx = x_new - x_old;  // Actual displacement from initial position
         
         Real beta_dt = beta * dt;
         for (int i = 0; i < n; ++i) {

@@ -2,6 +2,24 @@ import bpy
 from bpy.types import Operator
 import numpy as np
 
+# Global simulation state for real-time preview
+_sim_state = {
+    'mesh': None,
+    'state': None,
+    'constraints': None,
+    'params': None,
+    'initialized': False,
+    'frame': 0,
+    'playing': False,
+    'debug_contacts': [],  # List of (position, normal) tuples
+    'debug_pins': [],  # List of pinned vertex positions
+    'stats': {
+        'num_contacts': 0,
+        'num_pins': 0,
+        'last_step_time': 0.0,
+    },
+}
+
 class ANDO_OT_bake_simulation(Operator):
     """Bake Ando Barrier simulation to cache"""
     bl_idname = "ando.bake_simulation"
@@ -229,11 +247,293 @@ class ANDO_OT_add_wall_constraint(Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
+class ANDO_OT_init_realtime_simulation(Operator):
+    """Initialize real-time simulation"""
+    bl_idname = "ando.init_realtime_simulation"
+    bl_label = "Initialize Real-Time Simulation"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        global _sim_state
+        props = context.scene.ando_barrier
+        
+        try:
+            import ando_barrier_core as abc
+        except ImportError:
+            self.report({'ERROR'}, "ando_barrier_core module not available")
+            return {'CANCELLED'}
+        
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            self.report({'ERROR'}, "No mesh object selected")
+            return {'CANCELLED'}
+        
+        # Get mesh data
+        mesh_data = obj.data
+        vertices = np.array([v.co for v in mesh_data.vertices], dtype=np.float32)
+        triangles = np.array([p.vertices for p in mesh_data.polygons if len(p.vertices) == 3], dtype=np.int32)
+        
+        if len(triangles) == 0:
+            self.report({'ERROR'}, "Mesh has no triangles")
+            return {'CANCELLED'}
+        
+        # Initialize material
+        mat_props = props.material_properties
+        material = abc.Material()
+        material.youngs_modulus = mat_props.youngs_modulus
+        material.poisson_ratio = mat_props.poisson_ratio
+        material.density = mat_props.density
+        material.thickness = mat_props.thickness
+        
+        # Initialize parameters
+        params = abc.SimParams()
+        params.dt = props.dt / 1000.0
+        params.beta_max = props.beta_max
+        params.min_newton_steps = props.min_newton_steps
+        params.max_newton_steps = props.max_newton_steps
+        params.pcg_tol = props.pcg_tol
+        params.pcg_max_iters = props.pcg_max_iters
+        params.contact_gap_max = props.contact_gap_max
+        params.wall_gap = props.wall_gap
+        params.enable_ccd = props.enable_ccd
+        params.enable_friction = props.enable_friction
+        params.friction_mu = props.friction_mu
+        params.friction_epsilon = props.friction_epsilon
+        params.enable_strain_limiting = props.enable_strain_limiting
+        params.strain_limit = props.strain_limit
+        params.strain_tau = props.strain_tau
+        
+        # Initialize simulation objects
+        mesh = abc.Mesh()
+        mesh.initialize(vertices, triangles, material)
+        
+        state = abc.State()
+        state.initialize(mesh)
+        
+        constraints = abc.Constraints()
+        
+        # Extract pin constraints
+        pin_group_name = "ando_pins"
+        num_pins_added = 0
+        pin_positions = []
+        if pin_group_name in obj.vertex_groups:
+            pin_group = obj.vertex_groups[pin_group_name]
+            for i, v in enumerate(mesh_data.vertices):
+                try:
+                    weight = pin_group.weight(i)
+                    if weight > 0.5:
+                        pin_pos = np.array(v.co, dtype=np.float32)
+                        constraints.add_pin(i, pin_pos)
+                        pin_positions.append(tuple(pin_pos))
+                        num_pins_added += 1
+                except RuntimeError:
+                    pass
+        
+        # Add ground plane
+        if props.enable_ground_plane:
+            ground_normal = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+            constraints.add_wall(ground_normal, props.ground_plane_height, params.wall_gap)
+        
+        # Store in global state
+        _sim_state['mesh'] = mesh
+        _sim_state['state'] = state
+        _sim_state['constraints'] = constraints
+        _sim_state['params'] = params
+        _sim_state['initialized'] = True
+        _sim_state['frame'] = 0
+        _sim_state['playing'] = False
+        _sim_state['debug_pins'] = pin_positions
+        _sim_state['stats']['num_pins'] = num_pins_added
+        
+        self.report({'INFO'}, f"Initialized: {len(vertices)} vertices, {num_pins_added} pins")
+        return {'FINISHED'}
+
+class ANDO_OT_step_simulation(Operator):
+    """Step simulation forward one frame"""
+    bl_idname = "ando.step_simulation"
+    bl_label = "Step Simulation"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        global _sim_state
+        
+        if not _sim_state['initialized']:
+            self.report({'WARNING'}, "Initialize simulation first")
+            return {'CANCELLED'}
+        
+        try:
+            import ando_barrier_core as abc
+            import time
+        except ImportError:
+            self.report({'ERROR'}, "ando_barrier_core module not available")
+            return {'CANCELLED'}
+        
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            self.report({'ERROR'}, "No mesh object selected")
+            return {'CANCELLED'}
+        
+        # Retrieve simulation state
+        mesh = _sim_state['mesh']
+        state = _sim_state['state']
+        constraints = _sim_state['constraints']
+        params = _sim_state['params']
+        
+        # Calculate steps per frame (aiming for 24 fps)
+        props = context.scene.ando_barrier
+        steps_per_frame = max(1, int(1.0 / (props.dt / 1000.0) / 24.0))
+        
+        # Gravity vector (Blender Z-up)
+        gravity = np.array([0.0, 0.0, -9.81], dtype=np.float32)
+        
+        # Simulate steps for this frame (with timing)
+        start_time = time.time()
+        for step in range(steps_per_frame):
+            state.apply_gravity(gravity, params.dt)
+            abc.Integrator.step(mesh, state, constraints, params)
+        end_time = time.time()
+        
+        # Update mesh vertices directly (no shape keys)
+        positions = state.get_positions()
+        for i, v in enumerate(obj.data.vertices):
+            v.co = positions[i]
+        
+        # Mark mesh as updated
+        obj.data.update()
+        
+        _sim_state['frame'] += 1
+        
+        # Update statistics
+        step_time_ms = (end_time - start_time) * 1000.0 / steps_per_frame
+        _sim_state['stats']['last_step_time'] = step_time_ms
+        _sim_state['stats']['num_contacts'] = 0  # TODO: Get from C++ when exposed
+        _sim_state['stats']['num_pins'] = len(_sim_state['debug_pins'])
+        
+        # Update debug visualization data
+        from . import visualization
+        if visualization.is_visualization_enabled():
+            # TODO: Get actual contact data from C++
+            # For now, just update pins
+            visualization.update_debug_data(
+                pins=_sim_state['debug_pins'],
+                stats=_sim_state['stats']
+            )
+        
+        self.report({'INFO'}, f"Frame {_sim_state['frame']}")
+        return {'FINISHED'}
+
+class ANDO_OT_reset_realtime_simulation(Operator):
+    """Reset real-time simulation to initial state"""
+    bl_idname = "ando.reset_realtime_simulation"
+    bl_label = "Reset Real-Time"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        global _sim_state
+        
+        # Clear simulation state
+        _sim_state['mesh'] = None
+        _sim_state['state'] = None
+        _sim_state['constraints'] = None
+        _sim_state['params'] = None
+        _sim_state['initialized'] = False
+        _sim_state['frame'] = 0
+        _sim_state['playing'] = False
+        
+        # Reset mesh to original positions
+        obj = context.active_object
+        if obj and obj.type == 'MESH':
+            # If there's a shape key basis, restore from it
+            if obj.data.shape_keys and 'Basis' in obj.data.shape_keys.key_blocks:
+                basis = obj.data.shape_keys.key_blocks['Basis']
+                for i, v in enumerate(obj.data.vertices):
+                    v.co = basis.data[i].co
+                obj.data.update()
+        
+        self.report({'INFO'}, "Real-time simulation reset")
+        return {'FINISHED'}
+
+class ANDO_OT_toggle_play_simulation(Operator):
+    """Toggle play/pause for real-time simulation"""
+    bl_idname = "ando.toggle_play_simulation"
+    bl_label = "Play/Pause"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    _timer = None
+    
+    def modal(self, context, event):
+        global _sim_state
+        
+        if event.type == 'ESC' or not _sim_state['playing']:
+            return self.cancel(context)
+        
+        if event.type == 'TIMER':
+            # Step simulation
+            bpy.ops.ando.step_simulation()
+        
+        return {'PASS_THROUGH'}
+    
+    def execute(self, context):
+        global _sim_state
+        
+        if not _sim_state['initialized']:
+            self.report({'WARNING'}, "Initialize simulation first")
+            return {'CANCELLED'}
+        
+        # Toggle playing state
+        _sim_state['playing'] = not _sim_state['playing']
+        
+        if _sim_state['playing']:
+            # Start playing
+            wm = context.window_manager
+            self._timer = wm.event_timer_add(1.0 / 24.0, window=context.window)  # 24 fps
+            wm.modal_handler_add(self)
+            self.report({'INFO'}, "Simulation playing (ESC to stop)")
+            return {'RUNNING_MODAL'}
+        else:
+            # Stop playing
+            self.report({'INFO'}, "Simulation paused")
+            return {'FINISHED'}
+    
+    def cancel(self, context):
+        global _sim_state
+        _sim_state['playing'] = False
+        
+        if self._timer:
+            wm = context.window_manager
+            wm.event_timer_remove(self._timer)
+            self._timer = None
+        
+        return {'CANCELLED'}
+
+class ANDO_OT_toggle_debug_visualization(Operator):
+    """Toggle debug visualization overlay"""
+    bl_idname = "ando.toggle_debug_visualization"
+    bl_label = "Toggle Debug Visualization"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        from . import visualization
+        
+        if visualization.is_visualization_enabled():
+            visualization.disable_debug_visualization()
+            self.report({'INFO'}, "Debug visualization disabled")
+        else:
+            visualization.enable_debug_visualization()
+            self.report({'INFO'}, "Debug visualization enabled")
+        
+        return {'FINISHED'}
+
 classes = (
     ANDO_OT_bake_simulation,
     ANDO_OT_reset_simulation,
     ANDO_OT_add_pin_constraint,
     ANDO_OT_add_wall_constraint,
+    ANDO_OT_init_realtime_simulation,
+    ANDO_OT_step_simulation,
+    ANDO_OT_reset_realtime_simulation,
+    ANDO_OT_toggle_play_simulation,
+    ANDO_OT_toggle_debug_visualization,
 )
 
 def register():

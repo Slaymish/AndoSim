@@ -160,6 +160,92 @@ class ANDO_PT_cache_panel(Panel):
         layout.operator("ando.bake_simulation", icon='RENDER_ANIMATION')
         layout.operator("ando.reset_simulation", icon='FILE_REFRESH')
 
+class ANDO_PT_realtime_panel(Panel):
+    """Real-time preview panel"""
+    bl_label = "Real-Time Preview"
+    bl_idname = "ANDO_PT_realtime_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Ando Physics'
+    bl_parent_id = "ANDO_PT_main_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        # Import to check simulation state
+        try:
+            from . import operators
+            sim_state = operators._sim_state
+            
+            if sim_state['initialized']:
+                layout.label(text=f"Frame: {sim_state['frame']}", icon='TIME')
+                
+                # Play/pause button
+                row = layout.row(align=True)
+                play_icon = 'PAUSE' if sim_state['playing'] else 'PLAY'
+                play_text = "Pause" if sim_state['playing'] else "Play"
+                row.operator("ando.toggle_play_simulation", text=play_text, icon=play_icon)
+                
+                # Step button
+                row = layout.row(align=True)
+                row.operator("ando.step_simulation", text="Step", icon='FRAME_NEXT')
+                row.operator("ando.reset_realtime_simulation", text="Reset", icon='FILE_REFRESH')
+            else:
+                layout.label(text="Not initialized", icon='INFO')
+                layout.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+                
+        except ImportError:
+            layout.label(text="Core module not loaded", icon='ERROR')
+
+class ANDO_PT_debug_panel(Panel):
+    """Debug visualization panel"""
+    bl_label = "Debug & Statistics"
+    bl_idname = "ANDO_PT_debug_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Ando Physics'
+    bl_parent_id = "ANDO_PT_main_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        
+        try:
+            from . import operators, visualization
+            sim_state = operators._sim_state
+            
+            # Visualization toggle
+            box = layout.box()
+            box.label(text="Visualization", icon='HIDE_OFF')
+            
+            vis_text = "Hide Overlays" if visualization.is_visualization_enabled() else "Show Overlays"
+            vis_icon = 'HIDE_OFF' if visualization.is_visualization_enabled() else 'HIDE_ON'
+            box.operator("ando.toggle_debug_visualization", text=vis_text, icon=vis_icon)
+            
+            if visualization.is_visualization_enabled():
+                box.label(text="Red = Contacts", icon='DOT')
+                box.label(text="Green = Normals", icon='DOT')
+                box.label(text="Blue = Pins", icon='DOT')
+            
+            # Statistics
+            if sim_state['initialized']:
+                box = layout.box()
+                box.label(text="Statistics", icon='INFO')
+                stats = sim_state['stats']
+                
+                col = box.column(align=True)
+                col.label(text=f"Contacts: {stats['num_contacts']}")
+                col.label(text=f"Pins: {stats['num_pins']}")
+                
+                if stats['last_step_time'] > 0:
+                    col.label(text=f"Step time: {stats['last_step_time']:.1f} ms")
+                    fps = 1000.0 / stats['last_step_time'] if stats['last_step_time'] > 0 else 0
+                    col.label(text=f"FPS: {fps:.1f}")
+                    
+        except ImportError:
+            layout.label(text="Core module not loaded", icon='ERROR')
+
 classes = (
     ANDO_PT_main_panel,
     ANDO_PT_contact_panel,
@@ -167,6 +253,8 @@ classes = (
     ANDO_PT_strain_limiting_panel,
     ANDO_PT_material_panel,
     ANDO_PT_cache_panel,
+    ANDO_PT_realtime_panel,
+    ANDO_PT_debug_panel,
 )
 
 def register():
