@@ -10,6 +10,8 @@
 #include "elasticity.h"
 #include "barrier.h"
 #include "stiffness.h"
+#include "integrator.h"
+#include "collision.h"
 
 namespace py = pybind11;
 using namespace ando_barrier;
@@ -146,7 +148,22 @@ PYBIND11_MODULE(ando_barrier_core, m) {
                 r(i, 2) = state.velocities[i][2];
             }
             return result;
-        });
+        })
+        .def("set_velocities", [](State& state, py::array_t<Real> velocities) {
+            auto vel = velocities.unchecked<2>();
+            for (size_t i = 0; i < vel.shape(0) && i < state.num_vertices(); ++i) {
+                state.velocities[i][0] = vel(i, 0);
+                state.velocities[i][1] = vel(i, 1);
+                state.velocities[i][2] = vel(i, 2);
+            }
+        })
+        .def("apply_gravity", [](State& state, py::array_t<Real> gravity, Real dt) {
+            auto g = gravity.unchecked<1>();
+            Vec3 grav(g(0), g(1), g(2));
+            for (size_t i = 0; i < state.num_vertices(); ++i) {
+                state.velocities[i] += grav * dt;
+            }
+        }, "Apply gravity acceleration to all vertices");
     
     // Constraints class
     py::class_<Constraints>(m, "Constraints")
@@ -207,4 +224,11 @@ PYBIND11_MODULE(ando_barrier_core, m) {
             return mesh;
         },
         "Create mesh from numpy arrays (vertices Nx3, triangles Mx3)");
+    
+    // Integrator class (static methods for simulation)
+    py::class_<Integrator>(m, "Integrator")
+        .def(py::init<>())
+        .def_static("step", &Integrator::step,
+            py::arg("mesh"), py::arg("state"), py::arg("constraints"), py::arg("params"),
+            "Take one simulation step using Newton integrator with β accumulation");
 }

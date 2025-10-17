@@ -73,6 +73,7 @@ class ANDO_OT_bake_simulation(Operator):
         
         # Extract pin constraints from vertex group
         pin_group_name = "ando_pins"
+        num_pins_added = 0
         if pin_group_name in obj.vertex_groups:
             pin_group = obj.vertex_groups[pin_group_name]
             for i, v in enumerate(mesh_data.vertices):
@@ -81,10 +82,11 @@ class ANDO_OT_bake_simulation(Operator):
                     if weight > 0.5:  # Threshold for pinning
                         pin_pos = np.array(v.co, dtype=np.float32)
                         constraints.add_pin(i, pin_pos)
+                        num_pins_added += 1
                 except RuntimeError:
                     pass  # Vertex not in group
             
-            self.report({'INFO'}, f"Added {constraints.num_pins()} pin constraints")
+            self.report({'INFO'}, f"Added {num_pins_added} pin constraints")
         
         # Add ground plane if enabled
         if props.enable_ground_plane:
@@ -104,23 +106,25 @@ class ANDO_OT_bake_simulation(Operator):
         
         self.report({'INFO'}, f"Baking frames {start_frame} to {end_frame} ({steps_per_frame} steps/frame)")
         
+        # Gravity vector (Blender Z-up)
+        gravity = np.array([0.0, 0.0, -9.81], dtype=np.float32)
+        
         for frame in range(start_frame, end_frame + 1):
             # Create shape key for this frame
             shape_key = obj.shape_key_add(name=f'frame_{frame:04d}', from_mix=False)
             
             # Simulate steps for this frame
             for step in range(steps_per_frame):
-                # Apply gravity
-                gravity = np.array([0.0, 0.0, -9.81], dtype=np.float32)  # Blender Z-up
-                for i in range(state.num_vertices()):
-                    state.velocities[i] += gravity * params.dt
+                # Apply gravity acceleration
+                state.apply_gravity(gravity, params.dt)
                 
                 # Take physics step
                 abc.Integrator.step(mesh, state, constraints, params)
             
             # Update shape key with new positions
-            for i, v in enumerate(state.positions):
-                shape_key.data[i].co = v
+            positions = state.get_positions()
+            for i in range(len(positions)):
+                shape_key.data[i].co = positions[i]
             
             # Set keyframe
             shape_key.value = 0.0
