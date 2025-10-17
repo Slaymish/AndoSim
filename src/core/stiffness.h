@@ -48,7 +48,6 @@ public:
         const SparseMatrix& H_elastic  // Global elasticity Hessian
     );
     
-private:
     // Extract 3×3 Hessian block for a vertex from sparse global Hessian
     static Mat3 extract_hessian_block(const SparseMatrix& H, Index vertex_idx);
     

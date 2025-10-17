@@ -191,15 +191,35 @@ void Integrator::compute_gradient(
     Elasticity::compute_gradient(mesh, state, elastic_gradient);
     gradient += elastic_gradient;
     
+    // Assemble base elastic Hessian (mass + elasticity) for stiffness extraction
+    SparseMatrix H_elastic;
+    H_elastic.resize(3 * n, 3 * n);
+    std::vector<Triplet> base_triplets;
+    base_triplets.reserve(9 * n + 9 * mesh.triangles.size() * 9);
+    
+    // Mass/dt² diagonal
+    Real dt2_inv = 1.0 / (dt * dt);
+    for (int i = 0; i < n; ++i) {
+        Real mass_factor = state.masses[i] * dt2_inv;
+        for (int j = 0; j < 3; ++j) {
+            base_triplets.push_back(Triplet(3*i + j, 3*i + j, mass_factor));
+        }
+    }
+    
+    // Elastic Hessian
+    std::vector<Triplet> elastic_triplets;
+    Elasticity::compute_hessian(mesh, state, elastic_triplets);
+    base_triplets.insert(base_triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
+    H_elastic.setFromTriplets(base_triplets.begin(), base_triplets.end());
+    
     // 3. Barrier forces: Σ ∇V_barrier
     // For each contact
     for (const auto& contact : contacts) {
         if (contact.type == ContactType::POINT_TRIANGLE) {
-            // Compute dynamic stiffness
-            Real mass = state.masses[contact.idx0];
-            Mat3 H_block = Mat3::Identity() * 1000.0;  // TODO: extract from elastic Hessian
+            // Extract H_block for vertex involved in contact
+            Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
-                mass, dt, contact.gap, contact.normal, H_block
+                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
             );
             
             // Add barrier gradient
@@ -208,7 +228,32 @@ void Integrator::compute_gradient(
         }
     }
     
-    // TODO: Add pin and wall barrier gradients
+    // 4. Pin and wall barrier gradients
+    // Pins: gap = ||x_i - pin_target||
+    for (const auto& pin : constraints.pins) {
+        if (!pin.active) continue;
+
+        Vec3 offset = state.positions[pin.vertex_idx] - pin.target_position;
+        Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, pin.vertex_idx);
+        Real k_bar = Stiffness::compute_pin_stiffness(state.masses[pin.vertex_idx], dt, offset, H_block);
+
+        Barrier::compute_pin_gradient(pin.vertex_idx, pin.target_position, state,
+                                      params.contact_gap_max, k_bar, gradient);
+    }
+
+    // Walls: linear gap function g = n·x - offset
+    for (const auto& wall : constraints.walls) {
+        if (!wall.active) continue;
+
+        // For each vertex, compute wall stiffness and gradient contribution
+        for (Index vi = 0; vi < static_cast<Index>(state.num_vertices()); ++vi) {
+            Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, vi);
+            Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap, wall.normal, H_block);
+
+            Barrier::compute_wall_gradient(vi, wall.normal, wall.offset, state,
+                                           params.contact_gap_max, k_bar, gradient);
+        }
+    }
 }
 
 void Integrator::assemble_system_matrix(
@@ -249,15 +294,19 @@ void Integrator::assemble_system_matrix(
     // Add elastic Hessian triplets
     triplets.insert(triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
     
+    // Build a temporary base Hessian (mass + elasticity) for stiffness extraction
+    SparseMatrix H_base;
+    H_base.resize(3 * n, 3 * n);
+    H_base.setFromTriplets(triplets.begin(), triplets.end());
+    
     // 3. Barrier Hessians: Σ H_barrier
     // For each contact
     for (const auto& contact : contacts) {
         if (contact.type == ContactType::POINT_TRIANGLE) {
-            // Compute dynamic stiffness
-            Real mass = state.masses[contact.idx0];
-            Mat3 H_block = Mat3::Identity() * 1000.0;  // TODO: extract properly
+            // Extract H_block for accurate stiffness
+            Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
-                mass, dt, contact.gap, contact.normal, H_block
+                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
             );
             
             // Add barrier Hessian (will be sparse, 4×4 block of 3×3 matrices)
@@ -275,6 +324,48 @@ void Integrator::assemble_system_matrix(
         }
     }
     
+    // 4. Pin and wall Hessians
+    // Pins
+    for (const auto& pin : constraints.pins) {
+        if (!pin.active) continue;
+
+        // Extract H_block from base Hessian
+        Mat3 H_block = Stiffness::extract_hessian_block(H_base, pin.vertex_idx);
+        Real k_bar = Stiffness::compute_pin_stiffness(state.masses[pin.vertex_idx], dt,
+                                                     state.positions[pin.vertex_idx] - pin.target_position,
+                                                     H_block);
+
+        SparseMatrix pin_hess;
+        Barrier::compute_pin_hessian(pin.vertex_idx, pin.target_position, state,
+                                     params.contact_gap_max, k_bar, pin_hess);
+
+        for (int k = 0; k < pin_hess.outerSize(); ++k) {
+            for (SparseMatrix::InnerIterator it(pin_hess, k); it; ++it) {
+                triplets.push_back(Triplet(it.row(), it.col(), it.value()));
+            }
+        }
+    }
+
+    // Walls
+    for (const auto& wall : constraints.walls) {
+        if (!wall.active) continue;
+
+        for (Index vi = 0; vi < static_cast<Index>(state.num_vertices()); ++vi) {
+            Mat3 H_block = Stiffness::extract_hessian_block(H_base, vi);
+            Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap, wall.normal, H_block);
+
+            SparseMatrix wall_hess;
+            Barrier::compute_wall_hessian(vi, wall.normal, wall.offset, state,
+                                          params.contact_gap_max, k_bar, wall_hess);
+
+            for (int k = 0; k < wall_hess.outerSize(); ++k) {
+                for (SparseMatrix::InnerIterator it(wall_hess, k); it; ++it) {
+                    triplets.push_back(Triplet(it.row(), it.col(), it.value()));
+                }
+            }
+        }
+    }
+
     // Build sparse matrix from triplets
     hessian.setFromTriplets(triplets.begin(), triplets.end());
     
