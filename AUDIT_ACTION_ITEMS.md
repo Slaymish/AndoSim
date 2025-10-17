@@ -351,4 +351,4 @@ Implementation is production-ready when:
 For questions or clarifications, refer to:
 - Full audit: `TECHNICAL_AUDIT_REPORT.md`
 - Quick summary: `AUDIT_SUMMARY.md`
-- Paper spec: `README.md` (Tasks 0-13)
+- Paper spec: `PROJECT_SPEC.md` (Tasks 0-13)

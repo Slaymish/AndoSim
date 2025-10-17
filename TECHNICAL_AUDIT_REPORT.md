@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-A comprehensive technical audit was performed on the BlenderSim implementation of the Ando 2024 barrier method. The audit compared all major modules against the paper specification (README.md Tasks 0-13) and validated mathematical correctness through numerical tests.
+A comprehensive technical audit was performed on the BlenderSim implementation of the Ando 2024 barrier method. The audit compared all major modules against the paper specification (PROJECT_SPEC.md Tasks 0-13) and validated mathematical correctness through numerical tests.
 
 **Overall Assessment**: ✓ **Implementation is mathematically sound and paper-consistent** with minor issues.
 

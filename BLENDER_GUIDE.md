@@ -280,5 +280,5 @@ Currently only ground plane supported via UI. For custom walls:
 ## Support
 
 - Issues: GitHub repository
-- Documentation: `README.md`, `ROADMAP.md`
+- Documentation: `PROJECT_SPEC.md`, `ROADMAP.md`
 - Paper: Ando 2024 "A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness"
