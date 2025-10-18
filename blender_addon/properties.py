@@ -8,54 +8,204 @@ from bpy.props import (
     PointerProperty,
 )
 
+# -----------------------------------------------------------------------------
+# Material preset definitions
+# -----------------------------------------------------------------------------
+
+_MATERIAL_PRESET_DATA = {
+    "CLOTH": {
+        "label": "Cloth",
+        "description": "Heavy cloth tuned for draping demos",
+        "material": {
+            "youngs_modulus": 3.0e5,
+            "poisson_ratio": 0.35,
+            "density": 1100.0,
+            "thickness": 0.003,
+        },
+        "scene": {
+            "dt": 3.0,
+            "beta_max": 0.25,
+            "enable_friction": True,
+            "friction_mu": 0.4,
+            "friction_epsilon": 5e-5,
+            "contact_gap_max": 5e-4,
+            "wall_gap": 5e-4,
+            "enable_strain_limiting": True,
+            "strain_limit": 8.0,
+            "strain_tau": 0.08,
+        },
+    },
+    "RUBBER": {
+        "label": "Rubber",
+        "description": "Stretchy rubber sheet with high friction",
+        "material": {
+            "youngs_modulus": 2.5e6,
+            "poisson_ratio": 0.45,
+            "density": 1200.0,
+            "thickness": 0.004,
+        },
+        "scene": {
+            "dt": 2.0,
+            "beta_max": 0.2,
+            "enable_friction": True,
+            "friction_mu": 0.8,
+            "friction_epsilon": 8e-5,
+            "contact_gap_max": 3e-4,
+            "wall_gap": 3e-4,
+            "enable_strain_limiting": False,
+        },
+    },
+    "METAL": {
+        "label": "Metal",
+        "description": "Thin, stiff metal panel",
+        "material": {
+            "youngs_modulus": 5.0e8,
+            "poisson_ratio": 0.3,
+            "density": 7800.0,
+            "thickness": 0.002,
+        },
+        "scene": {
+            "dt": 1.5,
+            "beta_max": 0.15,
+            "enable_friction": True,
+            "friction_mu": 0.3,
+            "friction_epsilon": 5e-5,
+            "contact_gap_max": 2e-4,
+            "wall_gap": 2e-4,
+            "enable_strain_limiting": False,
+        },
+    },
+    "JELLY": {
+        "label": "Jelly",
+        "description": "Soft, bouncy jelly block",
+        "material": {
+            "youngs_modulus": 5.0e4,
+            "poisson_ratio": 0.45,
+            "density": 1050.0,
+            "thickness": 0.01,
+        },
+        "scene": {
+            "dt": 4.0,
+            "beta_max": 0.3,
+            "enable_friction": True,
+            "friction_mu": 0.5,
+            "friction_epsilon": 1.5e-4,
+            "contact_gap_max": 7e-4,
+            "wall_gap": 7e-4,
+            "enable_strain_limiting": True,
+            "strain_limit": 15.0,
+            "strain_tau": 0.12,
+        },
+    },
+}
+
+_MATERIAL_PRESET_ITEMS = [
+    (key, data["label"], data["description"], idx)
+    for idx, (key, data) in enumerate(_MATERIAL_PRESET_DATA.items())
+]
+_MATERIAL_PRESET_ITEMS.append(("CUSTOM", "Custom", "User-defined material parameters", len(_MATERIAL_PRESET_ITEMS)))
+
+
+def _mark_material_custom(self, _context):
+    """Mark the owning scene preset as custom when the user edits material parameters."""
+    scene = getattr(self, "id_data", None)
+    if isinstance(scene, bpy.types.Scene):
+        props = getattr(scene, "ando_barrier", None)
+        if props and getattr(props, "_applying_preset", False) is False and props.material_preset != "CUSTOM":
+            props.material_preset = "CUSTOM"
+
+
+def _mark_scene_custom(self, _context):
+    """Mark preset as custom when a scene parameter tied to presets is edited."""
+    if getattr(self, "_applying_preset", False):
+        return
+    if self.material_preset != "CUSTOM":
+        self.material_preset = "CUSTOM"
+
+
+def _apply_material_preset(self, _context):
+    """Apply preset values to material and scene properties."""
+    if getattr(self, "_applying_preset", False):
+        return
+    preset_key = self.material_preset
+    if preset_key == "CUSTOM":
+        return
+    preset = _MATERIAL_PRESET_DATA.get(preset_key)
+    if not preset:
+        return
+    self._applying_preset = True
+    try:
+        mat_props = self.material_properties
+        for attr, value in preset["material"].items():
+            if hasattr(mat_props, attr):
+                setattr(mat_props, attr, value)
+        for attr, value in preset["scene"].items():
+            if hasattr(self, attr):
+                setattr(self, attr, value)
+    finally:
+        self._applying_preset = False
+
 class AndoBarrierMaterialProperties(PropertyGroup):
     """Material properties for Ando Barrier simulation"""
     
     youngs_modulus: FloatProperty(
         name="Young's Modulus (E)",
         description="Young's modulus in Pa",
-        default=1e6,
+        default=3.0e5,
         min=1e3,
         max=1e9,
         unit='NONE',
+        update=_mark_material_custom,
     )
     
     poisson_ratio: FloatProperty(
         name="Poisson Ratio (ν)",
         description="Poisson's ratio",
-        default=0.3,
+        default=0.35,
         min=0.0,
         max=0.49,
+        update=_mark_material_custom,
     )
     
     density: FloatProperty(
         name="Density (ρ)",
         description="Material density in kg/m³",
-        default=1000.0,
+        default=1100.0,
         min=1.0,
         max=10000.0,
+        update=_mark_material_custom,
     )
     
     thickness: FloatProperty(
         name="Thickness",
         description="Shell thickness in meters",
-        default=0.001,
+        default=0.003,
         min=0.0001,
         max=0.1,
         unit='LENGTH',
+        update=_mark_material_custom,
     )
 
 class AndoBarrierSceneProperties(PropertyGroup):
     """Scene-level simulation properties"""
     
+    material_preset: EnumProperty(
+        name="Material Preset",
+        description="Apply tuned material parameter presets",
+        items=_MATERIAL_PRESET_ITEMS,
+        default="CLOTH",
+        update=_apply_material_preset,
+    )
+    
     # Time stepping
     dt: FloatProperty(
         name="Time Step (Δt)",
         description="Time step in milliseconds",
-        default=2.0,
+        default=3.0,
         min=0.1,
         max=10.0,
         unit='NONE',
+        update=_mark_scene_custom,
     )
     
     beta_max: FloatProperty(
@@ -64,6 +214,7 @@ class AndoBarrierSceneProperties(PropertyGroup):
         default=0.25,
         min=0.01,
         max=1.0,
+        update=_mark_scene_custom,
     )
     
     # Newton solver
@@ -104,19 +255,21 @@ class AndoBarrierSceneProperties(PropertyGroup):
     contact_gap_max: FloatProperty(
         name="Contact Gap Max (ḡ)",
         description="Maximum gap for contact barrier in meters",
-        default=0.001,
+        default=5e-4,
         min=0.0001,
         max=0.01,
         unit='LENGTH',
+        update=_mark_scene_custom,
     )
     
     wall_gap: FloatProperty(
         name="Wall Gap",
         description="Gap for wall constraints in meters",
-        default=0.001,
+        default=5e-4,
         min=0.0001,
         max=0.01,
         unit='LENGTH',
+        update=_mark_scene_custom,
     )
     
     enable_ccd: BoolProperty(
@@ -129,47 +282,53 @@ class AndoBarrierSceneProperties(PropertyGroup):
     enable_friction: BoolProperty(
         name="Enable Friction",
         description="Enable friction constraints",
-        default=False,
+        default=True,
+        update=_mark_scene_custom,
     )
     
     friction_mu: FloatProperty(
         name="Friction μ",
         description="Friction coefficient",
-        default=0.1,
+        default=0.4,
         min=0.0,
         max=1.0,
+        update=_mark_scene_custom,
     )
     
     friction_epsilon: FloatProperty(
         name="Friction ε",
         description="Friction epsilon in meters",
-        default=1e-5,
+        default=5e-5,
         min=1e-6,
         max=1e-3,
         unit='LENGTH',
+        update=_mark_scene_custom,
     )
     
     # Strain limiting (optional)
     enable_strain_limiting: BoolProperty(
         name="Enable Strain Limiting",
         description="Enable strain limiting constraints",
-        default=False,
+        default=True,
+        update=_mark_scene_custom,
     )
     
     strain_limit: FloatProperty(
         name="Strain Limit %",
         description="Maximum strain as percentage (e.g., 5 for 5%)",
-        default=5.0,
+        default=8.0,
         min=0.1,
         max=50.0,
+        update=_mark_scene_custom,
     )
     
     strain_tau: FloatProperty(
         name="Strain τ",
         description="Strain tau parameter (usually equals strain epsilon)",
-        default=0.05,
+        default=0.08,
         min=0.001,
         max=0.5,
+        update=_mark_scene_custom,
     )
     
     # Ground plane

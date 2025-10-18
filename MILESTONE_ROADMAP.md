@@ -7,30 +7,35 @@ This document outlines the key milestones for turning the AndoSim physics engine
 ## Phase 1: Core Integration
 **Goal:** Connect the existing AndoSim physics engine to Blender, creating a working, minimal add-on.
 
-- [ ] Create Python bindings for the AndoSim solver.
-- [ ] Implement basic scene import/export:
-  - Convert Blender meshes to AndoSim colliders.
-  - Map Blender transforms to physics simulation state.
-- [ ] Expose core physics parameters in Blender:
-  - Stiffness, damping, restitution, timestep.
-- [ ] Enable single-frame simulation preview in the viewport.
-- [ ] Ensure correct unit scaling and axis alignment with Blender.
+- [x] Create Python bindings for the AndoSim solver.  
+  _Status:_ `ando_barrier_core` module builds and ships with the add-on.
+- [x] Implement basic scene import/export:
+  - [x] Convert Blender meshes to AndoSim colliders.
+  - [x] Map Blender transforms to physics simulation state (object → state init).
+- [~] Expose core physics parameters in Blender:
+  - [x] Time stepping & solver controls (dt, β, Newton/PCG).
+  - [x] Material properties (E, ν, density, thickness).
+  - [ ] Damping & restitution presets (pending material system).
+- [x] Enable single-frame simulation preview in the viewport (Step operator + realtime modal).
+- [~] Ensure correct unit scaling and axis alignment with Blender.
+  - Z-up alignment handled; scaling audit still queued for validation pass.
 
 ---
 
 ## Phase 2: Reliability and Visual Feedback
 **Goal:** Make the simulation visually stable and understandable in the Blender viewport.
 
-- [ ] Continuous collision validation (no intersections, even for fast-moving objects).
+- [ ] Continuous collision validation (no intersections, even for fast-moving objects).  
+  _Next:_ CCD hooks exist in core; expose toggles & add regression tests.
 - [ ] Smooth elastic responses:
   - Visually accurate bounces.
   - Stable stacks and dense contacts.
-- [ ] Real-time parameter feedback:
-  - Sliders for stiffness, damping, restitution.
-  - Immediate viewport response.
-- [ ] Debug overlays (optional but valuable):
-  - Contact points, normals, and forces.
-  - Energy drift or constraint violation visualization.
+- [~] Real-time parameter feedback:
+  - [x] Sliders for stiffness, friction, solver tolerances.
+  - [ ] Immediate viewport response for parameter edits mid-sim (requires re-init hooks).
+- [x] Debug overlays:
+  - [x] Contact points, normals (type-colored) and pins visualized in viewport.
+  - [ ] Energy drift / constraint violation visualization.
 
 ---
 
@@ -46,6 +51,13 @@ This document outlines the key milestones for turning the AndoSim physics engine
   - Persist AndoSim-specific simulation states across Blender sessions.
 - [ ] Compatibility with modifiers:
   - Ensure AndoSim plays nicely with subdivision, shape keys, and other modifiers.
+
+---
+
+### Current Focus
+- Material preset system (rubber, metal, cloth, jelly) powering solver parameters.
+- Collision validation pass to surface CCD/debug metrics in the UI.
+- Documentation refresh once Phase 2 reliability work lands.
 
 ---
 

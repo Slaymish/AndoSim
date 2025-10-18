@@ -129,6 +129,8 @@ class ANDO_PT_material_panel(Panel):
         
         if context.active_object and context.active_object.type == 'MESH':
             layout.label(text="Material for active mesh:")
+            layout.prop(props, "material_preset", text="Preset")
+            layout.separator()
             layout.prop(mat_props, "youngs_modulus")
             layout.prop(mat_props, "poisson_ratio")
             layout.prop(mat_props, "density")
