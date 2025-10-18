@@ -178,6 +178,25 @@ PYBIND11_MODULE(ando_barrier_core, m) {
         })
         .def("num_active_pins", &Constraints::num_active_pins)
         .def("num_active_contacts", &Constraints::num_active_contacts);
+
+    // Contact types and data structures
+    py::enum_<ContactType>(m, "ContactType")
+        .value("POINT_TRIANGLE", ContactType::POINT_TRIANGLE)
+        .value("EDGE_EDGE", ContactType::EDGE_EDGE)
+        .value("WALL", ContactType::WALL)
+        .export_values();
+
+    py::class_<ContactPair>(m, "Contact")
+        .def(py::init<>())
+        .def_property_readonly("type", [](const ContactPair& c) { return c.type; })
+        .def_property_readonly("idx0", [](const ContactPair& c) { return c.idx0; })
+        .def_property_readonly("idx1", [](const ContactPair& c) { return c.idx1; })
+        .def_property_readonly("idx2", [](const ContactPair& c) { return c.idx2; })
+        .def_property_readonly("idx3", [](const ContactPair& c) { return c.idx3; })
+        .def_property_readonly("gap", [](const ContactPair& c) { return c.gap; })
+        .def_property_readonly("normal", [](const ContactPair& c) { return c.normal; })
+        .def_property_readonly("witness_p", [](const ContactPair& c) { return c.witness_p; })
+        .def_property_readonly("witness_q", [](const ContactPair& c) { return c.witness_q; });
     
     // Elasticity class (static methods)
     py::class_<Elasticity>(m, "Elasticity")
@@ -230,5 +249,11 @@ PYBIND11_MODULE(ando_barrier_core, m) {
         .def(py::init<>())
         .def_static("step", &Integrator::step,
             py::arg("mesh"), py::arg("state"), py::arg("constraints"), py::arg("params"),
-            "Take one simulation step using Newton integrator with β accumulation");
+            "Take one simulation step using Newton integrator with β accumulation")
+        .def_static("compute_contacts",
+            [](const Mesh& mesh, const State& state) {
+                return Integrator::compute_contacts(mesh, state);
+            },
+            py::arg("mesh"), py::arg("state"),
+            "Detect all collision contacts for the current mesh/state");
 }

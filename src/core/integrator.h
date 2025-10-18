@@ -32,6 +32,16 @@ public:
     static void step(Mesh& mesh, State& state, Constraints& constraints, 
                     const SimParams& params);
 
+    /**
+     * Collect current contact pairs using the same pipeline as the integrator.
+     *
+     * @param mesh Mesh topology
+     * @param state Current state
+     * @return Vector of detected contact pairs
+     */
+    static std::vector<ContactPair> compute_contacts(const Mesh& mesh,
+                                                     const State& state);
+
 private:
     /**
      * Inner Newton step: solve for search direction and take line search step

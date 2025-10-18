@@ -406,15 +406,25 @@ class ANDO_OT_step_simulation(Operator):
         # Update statistics
         step_time_ms = (end_time - start_time) * 1000.0 / steps_per_frame
         _sim_state['stats']['last_step_time'] = step_time_ms
-        _sim_state['stats']['num_contacts'] = 0  # TODO: Get from C++ when exposed
         _sim_state['stats']['num_pins'] = len(_sim_state['debug_pins'])
+        
+        # Collect contact data for visualization and statistics
+        contacts = abc.Integrator.compute_contacts(mesh, state)
+        debug_contacts = []
+        for contact in contacts:
+            # Convert Eigen vectors to plain Python tuples for Blender GPU API
+            contact_pos = tuple(float(x) for x in np.asarray(contact.witness_p))
+            contact_normal = tuple(float(x) for x in np.asarray(contact.normal))
+            debug_contacts.append((contact_pos, contact_normal))
+        
+        _sim_state['debug_contacts'] = debug_contacts
+        _sim_state['stats']['num_contacts'] = len(debug_contacts)
         
         # Update debug visualization data
         from . import visualization
         if visualization.is_visualization_enabled():
-            # TODO: Get actual contact data from C++
-            # For now, just update pins
             visualization.update_debug_data(
+                contacts=debug_contacts,
                 pins=_sim_state['debug_pins'],
                 stats=_sim_state['stats']
             )

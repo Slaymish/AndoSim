@@ -164,6 +164,13 @@ Real Integrator::inner_newton_step(
     return 0.5;  // Partial success
 }
 
+std::vector<ContactPair> Integrator::compute_contacts(const Mesh& mesh,
+                                                     const State& state) {
+    std::vector<ContactPair> contacts;
+    detect_collisions(mesh, state, contacts);
+    return contacts;
+}
+
 void Integrator::compute_gradient(
     const Mesh& mesh,
     const State& state,
