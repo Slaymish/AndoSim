@@ -12,10 +12,19 @@ from mathutils import Vector
 _draw_handler = None
 _shader = None
 
+# Color palette per contact type (R, G, B, A)
+CONTACT_COLORS = {
+    'POINT_TRIANGLE': (1.0, 0.15, 0.15, 1.0),  # Red
+    'EDGE_EDGE': (1.0, 0.6, 0.05, 1.0),        # Orange
+    'WALL': (0.8, 0.8, 0.2, 1.0),              # Yellow
+}
+DEFAULT_CONTACT_COLOR = (0.9, 0.9, 0.9, 1.0)    # Light gray for unknown types
+
+
 def get_shader():
     """Get or create shader for drawing"""
     global _shader
-    if _shader is None:
+    if (_shader is None):
         _shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     return _shader
 
@@ -33,26 +42,35 @@ def draw_debug_callback():
     gpu.state.line_width_set(2.0)
     gpu.state.point_size_set(8.0)
     
-    # Draw contact points (red dots)
-    if sim_state['debug_contacts']:
-        positions = [contact[0] for contact in sim_state['debug_contacts']]
-        batch = batch_for_shader(shader, 'POINTS', {"pos": positions})
-        shader.bind()
-        shader.uniform_float("color", (1.0, 0.0, 0.0, 1.0))  # Red
-        batch.draw(shader)
-        
-        # Draw contact normals (green lines)
-        lines = []
-        for pos, normal in sim_state['debug_contacts']:
-            start = Vector(pos)
-            end = start + Vector(normal) * 0.05  # Scale normal for visibility
-            lines.extend([start, end])
-        
-        if lines:
-            batch = batch_for_shader(shader, 'LINES', {"pos": lines})
+    # Draw contact points grouped by type
+    contact_groups = {}
+    for contact in sim_state['debug_contacts']:
+        ctype = contact.get('type', 'UNKNOWN')
+        contact_groups.setdefault(ctype, []).append(contact)
+
+    for contact_type, contacts in contact_groups.items():
+        color = CONTACT_COLORS.get(contact_type, DEFAULT_CONTACT_COLOR)
+
+        positions = [Vector(contact['position']) for contact in contacts]
+        if positions:
+            batch = batch_for_shader(shader, 'POINTS', {"pos": positions})
             shader.bind()
-            shader.uniform_float("color", (0.0, 1.0, 0.0, 1.0))  # Green
+            shader.uniform_float("color", color)
             batch.draw(shader)
+
+        # Draw contact normals as lines with half alpha for readability
+        lines = []
+        for contact in contacts:
+            start = Vector(contact['position'])
+            end = start + Vector(contact['normal']) * 0.05  # Scale normal for visibility
+            lines.extend([start, end])
+
+        if lines:
+            line_batch = batch_for_shader(shader, 'LINES', {"pos": lines})
+            shader.bind()
+            r, g, b, a = color
+            shader.uniform_float("color", (r, g, b, min(1.0, a * 0.6)))
+            line_batch.draw(shader)
     
     # Draw pinned vertices (blue dots)
     if sim_state['debug_pins']:

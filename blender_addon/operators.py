@@ -1,6 +1,19 @@
 import bpy
 from bpy.types import Operator
 import numpy as np
+from collections import Counter
+
+
+def _default_stats():
+    return {
+        'num_contacts': 0,
+        'num_pins': 0,
+        'last_step_time': 0.0,
+        'peak_contacts': 0,
+        'contact_counts': {},
+        'peak_contact_counts': {},
+    }
+
 
 # Global simulation state for real-time preview
 _sim_state = {
@@ -11,13 +24,9 @@ _sim_state = {
     'initialized': False,
     'frame': 0,
     'playing': False,
-    'debug_contacts': [],  # List of (position, normal) tuples
+    'debug_contacts': [],  # List of per-contact dicts
     'debug_pins': [],  # List of pinned vertex positions
-    'stats': {
-        'num_contacts': 0,
-        'num_pins': 0,
-        'last_step_time': 0.0,
-    },
+    'stats': _default_stats(),
 }
 
 class ANDO_OT_bake_simulation(Operator):
@@ -342,6 +351,7 @@ class ANDO_OT_init_realtime_simulation(Operator):
         _sim_state['initialized'] = True
         _sim_state['frame'] = 0
         _sim_state['playing'] = False
+        _sim_state['stats'] = _default_stats()
         _sim_state['debug_pins'] = pin_positions
         _sim_state['stats']['num_pins'] = num_pins_added
         
@@ -411,14 +421,31 @@ class ANDO_OT_step_simulation(Operator):
         # Collect contact data for visualization and statistics
         contacts = abc.Integrator.compute_contacts(mesh, state)
         debug_contacts = []
+        contact_counter = Counter()
         for contact in contacts:
             # Convert Eigen vectors to plain Python tuples for Blender GPU API
             contact_pos = tuple(float(x) for x in np.asarray(contact.witness_p))
             contact_normal = tuple(float(x) for x in np.asarray(contact.normal))
-            debug_contacts.append((contact_pos, contact_normal))
+            contact_type = getattr(contact.type, "name", str(contact.type))
+            if isinstance(contact_type, str) and contact_type.startswith("ContactType."):
+                contact_type = contact_type.split(".", 1)[1]
+            debug_contacts.append({
+                'position': contact_pos,
+                'normal': contact_normal,
+                'type': contact_type,
+            })
+            contact_counter[contact_type] += 1
         
         _sim_state['debug_contacts'] = debug_contacts
-        _sim_state['stats']['num_contacts'] = len(debug_contacts)
+        stats = _sim_state['stats']
+        current_count = len(debug_contacts)
+        stats['num_contacts'] = current_count
+        stats['contact_counts'] = dict(contact_counter)
+        stats['peak_contacts'] = max(stats.get('peak_contacts', 0), current_count)
+        peak_by_type = dict(stats.get('peak_contact_counts', {}))
+        for ctype, count in contact_counter.items():
+            peak_by_type[ctype] = max(peak_by_type.get(ctype, 0), count)
+        stats['peak_contact_counts'] = peak_by_type
         
         # Update debug visualization data
         from . import visualization
@@ -449,6 +476,9 @@ class ANDO_OT_reset_realtime_simulation(Operator):
         _sim_state['initialized'] = False
         _sim_state['frame'] = 0
         _sim_state['playing'] = False
+        _sim_state['debug_contacts'] = []
+        _sim_state['debug_pins'] = []
+        _sim_state['stats'] = _default_stats()
         
         # Reset mesh to original positions
         obj = context.active_object

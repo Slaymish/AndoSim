@@ -236,12 +236,23 @@ class ANDO_PT_debug_panel(Panel):
                 
                 col = box.column(align=True)
                 col.label(text=f"Contacts: {stats['num_contacts']}")
+                if stats.get('peak_contacts', 0):
+                    col.label(text=f"Peak contacts: {stats['peak_contacts']}")
                 col.label(text=f"Pins: {stats['num_pins']}")
                 
                 if stats['last_step_time'] > 0:
                     col.label(text=f"Step time: {stats['last_step_time']:.1f} ms")
                     fps = 1000.0 / stats['last_step_time'] if stats['last_step_time'] > 0 else 0
                     col.label(text=f"FPS: {fps:.1f}")
+
+                counts = stats.get('contact_counts', {})
+                if counts:
+                    box.separator()
+                    box.label(text="Contacts by Type", icon='OUTLINER_OB_GROUP_INSTANCE')
+                    for ctype in sorted(counts.keys()):
+                        current = counts.get(ctype, 0)
+                        peak = stats.get('peak_contact_counts', {}).get(ctype, current)
+                        box.label(text=f"{ctype}: {current} (peak {peak})")
                     
         except ImportError:
             layout.label(text="Core module not loaded", icon='ERROR')
