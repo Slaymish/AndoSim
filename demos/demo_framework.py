@@ -6,16 +6,27 @@ Provides interactive playback with better rendering than matplotlib
 import numpy as np
 import sys
 import os
+import time
 
 # Add build directory to path for module import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'build'))
+
+HAS_PYVISTA = False
+HAS_MATPLOTLIB = False
 
 try:
     import pyvista as pv
     HAS_PYVISTA = True
 except ImportError:
     print("PyVista not installed. Install with: pip install pyvista")
-    HAS_PYVISTA = False
+
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib import animation as mpl_animation
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+    HAS_MATPLOTLIB = True
+except ImportError:
+    print("Matplotlib not installed. Install with: pip install matplotlib")
 
 import ando_barrier_core as abc
 
@@ -97,22 +108,27 @@ class PhysicsDemo:
         print(f"{'='*60}\n")
         
     def visualize(self, window_size=(1280, 720), fps=30):
-        """Visualize simulation using PyVista"""
-        if not HAS_PYVISTA:
-            print("PyVista not available. Install with: pip install pyvista")
-            return
-            
+        """Visualize simulation using PyVista if available, otherwise Matplotlib."""
         if not self.frames:
             print("No frames to visualize. Run simulation first.")
             return
-        
-        print(f"Visualizing {len(self.frames)} frames...")
+
+        if HAS_PYVISTA:
+            self._visualize_with_pyvista(window_size, fps)
+        elif HAS_MATPLOTLIB:
+            self._visualize_with_matplotlib(fps)
+        else:
+            print("No visualization backend available. Install PyVista or Matplotlib.")
+
+    def _visualize_with_pyvista(self, window_size, fps):
+        """Interactive visualization using PyVista."""
+        print(f"Visualizing {len(self.frames)} frames with PyVista...")
         print("Controls:")
         print("  - Space: Play/Pause")
         print("  - Left/Right arrows: Step backward/forward")
         print("  - Q: Quit")
         print()
-        
+
         # Create plotter
         plotter = pv.Plotter(window_size=window_size)
         plotter.set_background('white')
@@ -168,51 +184,60 @@ class PhysicsDemo:
         
         frame_delay = 1.0 / fps
         
-        def update_frame(frame_idx):
+        def set_status():
+            status_text = f"Frame {anim_state['frame']}/{len(self.frames)-1} | {'Playing' if anim_state['playing'] else 'Paused'}"
+            plotter.add_text(
+                status_text,
+                position='upper_left',
+                font_size=12,
+                name='status'
+            )
+
+        def update_frame(frame_idx, *, render=True):
             """Update mesh to specific frame"""
             positions = self.frames[frame_idx]
-            mesh.points = positions
+            np_positions = np.asarray(positions)
+            current_points = mesh.points
+            if current_points.shape == np_positions.shape:
+                current_points[:] = np_positions
+            else:
+                mesh.points = np_positions
             mesh.compute_normals(inplace=True)
-            # Only update/render if interactor is initialized
-            if plotter.iren and plotter.iren.initialized:
-                plotter.update()
+            mesh.modified()
+            if render and plotter.iren and plotter.iren.initialized:
                 plotter.render()
+            set_status()
         
-        def on_timer():
-            """Timer callback for animation"""
-            import time
-            if anim_state['playing']:
-                current_time = time.time()
-                if current_time - anim_state['last_update'] >= frame_delay:
-                    anim_state['frame'] = (anim_state['frame'] + 1) % len(self.frames)
-                    update_frame(anim_state['frame'])
-                    anim_state['last_update'] = current_time
-                    plotter.add_text(
-                        f"Frame {anim_state['frame']}/{len(self.frames)-1} | "
-                        f"{'Playing' if anim_state['playing'] else 'Paused'}",
-                        position='upper_left',
-                        font_size=12,
-                        name='status'
-                    )
+        def animation_callback():
+            """Repeated callback to advance frames when playing."""
+            if not anim_state['playing']:
+                return
+            current_time = time.time()
+            if current_time - anim_state['last_update'] >= frame_delay:
+                anim_state['frame'] = (anim_state['frame'] + 1) % len(self.frames)
+                anim_state['last_update'] = current_time
+                update_frame(anim_state['frame'])
         
         # Set up timer callback
         # PyVista passes step number as argument, so lambda must accept it
-        plotter.add_timer_event(max_steps=999999, duration=int(frame_delay * 1000), 
-                               callback=lambda step: on_timer())
+        def timer_callback(step):
+            animation_callback()
+
+        plotter.add_timer_event(
+            max_steps=1_000_000,
+            duration=max(int(frame_delay * 1000), 1),
+            callback=timer_callback,
+        )
         
         # Key event callbacks - define functions with closures
         def on_space():
             """Toggle play/pause"""
             try:
                 anim_state['playing'] = not anim_state['playing']
+                anim_state['last_update'] = time.time()
                 status_text = 'Playing' if anim_state['playing'] else 'Paused'
-                print(f"{status_text}")
-                plotter.add_text(
-                    f"Frame {anim_state['frame']}/{len(self.frames)-1} | {status_text}",
-                    position='upper_left',
-                    font_size=12,
-                    name='status'
-                )
+                print(status_text)
+                set_status()
             except Exception as e:
                 print(f"Error in on_space: {e}")
                 import traceback
@@ -224,12 +249,9 @@ class PhysicsDemo:
                 anim_state['frame'] = min(anim_state['frame'] + 1, len(self.frames) - 1)
                 update_frame(anim_state['frame'])
                 print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
-                plotter.add_text(
-                    f"Frame {anim_state['frame']}/{len(self.frames)-1} | Paused",
-                    position='upper_left',
-                    font_size=12,
-                    name='status'
-                )
+                anim_state['playing'] = False
+                anim_state['last_update'] = time.time()
+                set_status()
             except Exception as e:
                 print(f"Error in on_right: {e}")
                 import traceback
@@ -241,12 +263,9 @@ class PhysicsDemo:
                 anim_state['frame'] = max(anim_state['frame'] - 1, 0)
                 update_frame(anim_state['frame'])
                 print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
-                plotter.add_text(
-                    f"Frame {anim_state['frame']}/{len(self.frames)-1} | Paused",
-                    position='upper_left',
-                    font_size=12,
-                    name='status'
-                )
+                anim_state['playing'] = False
+                anim_state['last_update'] = time.time()
+                set_status()
             except Exception as e:
                 print(f"Error in on_left: {e}")
                 import traceback
@@ -260,9 +279,14 @@ class PhysicsDemo:
         print("  Left - Step backward")
         print("  q - Quit\n")
         
-        plotter.add_key_event('space', on_space)  # Try lowercase space
-        plotter.add_key_event('Right', on_right)
-        plotter.add_key_event('Left', on_left)
+        for key in ('space', 'Space', ' ', 'Return'):
+            plotter.add_key_event(key, on_space)
+        for key in ('Right', 'right', 'd'):
+            plotter.add_key_event(key, on_right)
+        for key in ('Left', 'left', 'a'):
+            plotter.add_key_event(key, on_left)
+        for key in ('q', 'Q', 'Escape'):
+            plotter.add_key_event(key, lambda: plotter.close())
         
         # Initial setup - just set geometry, don't update/render yet
         positions = self.frames[0]
@@ -270,15 +294,108 @@ class PhysicsDemo:
         mesh.compute_normals(inplace=True)
         
         # Add initial status text
-        plotter.add_text(
-            f"Frame 0/{len(self.frames)-1} | Paused",
-            position='upper_left',
-            font_size=12,
-            name='status'
-        )
+        set_status()
+        anim_state['last_update'] = time.time()
         
         # Show (this initializes the interactor)
         plotter.show()
+
+    def _visualize_with_matplotlib(self, fps):
+        """Fallback visualization using Matplotlib with keyboard controls."""
+        print(f"Visualizing {len(self.frames)} frames with Matplotlib...")
+        print("Controls:")
+        print("  - Space: Play/Pause")
+        print("  - Left/Right arrows: Step backward/forward")
+        print("  - Q/Escape: Quit")
+        print()
+
+        frames = [np.asarray(frame) for frame in self.frames]
+        triangles = np.asarray(self.triangles, dtype=int)
+
+        fig = plt.figure(figsize=(10, 7))
+        ax = fig.add_subplot(111, projection='3d')
+        try:
+            fig.canvas.manager.set_window_title(f"AndoSim Demo - {self.name}")
+        except Exception:
+            pass  # Backend may not support setting window title
+
+        # Build triangle vertex list for Poly3DCollection
+        def make_faces(points):
+            return [points[tri] for tri in triangles]
+
+        poly = Poly3DCollection(make_faces(frames[0]), facecolors=(0.6, 0.8, 1.0, 0.9),
+                                edgecolors='gray', linewidths=0.5)
+        ax.add_collection3d(poly)
+
+        # Plot pins if present
+        pin_positions = self.get_pin_positions()
+        pin_scatter = None
+        if pin_positions:
+            pin_positions = np.asarray(pin_positions)
+            pin_scatter = ax.scatter(pin_positions[:, 0], pin_positions[:, 1],
+                                     pin_positions[:, 2], color='blue', s=30, label='Pins')
+
+        # Auto scale axes
+        all_points = np.vstack(frames)
+        min_bounds = all_points.min(axis=0)
+        max_bounds = all_points.max(axis=0)
+        center = (max_bounds + min_bounds) / 2.0
+        extent = (max_bounds - min_bounds).max() * 0.6
+        extent = max(extent, 1e-3)
+
+        ax.set_xlim(center[0] - extent, center[0] + extent)
+        ax.set_ylim(center[1] - extent, center[1] + extent)
+        ax.set_zlim(center[2] - extent, center[2] + extent)
+        ax.set_box_aspect([1, 1, 1])
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.view_init(elev=25, azim=-60)
+
+        status_text = ax.text2D(0.02, 0.95, "Frame 0 | Paused", transform=ax.transAxes)
+
+        state = {
+            'frame': 0,
+            'playing': False,
+        }
+
+        interval_ms = max(int(1000 / max(fps, 1)), 1)
+        timer = fig.canvas.new_timer(interval=interval_ms)
+
+        def update_frame(frame_idx):
+            state['frame'] = frame_idx
+            positions = frames[frame_idx]
+            poly.set_verts(make_faces(positions))
+            status_text.set_text(
+                f"Frame {frame_idx}/{len(frames) - 1} | {'Playing' if state['playing'] else 'Paused'}"
+            )
+            fig.canvas.draw_idle()
+
+        def on_timer():
+            if state['playing']:
+                update_frame((state['frame'] + 1) % len(frames))
+
+        def on_key(event):
+            key = event.key.lower()
+            if key == ' ':
+                state['playing'] = not state['playing']
+                update_frame(state['frame'])
+            elif key == 'right':
+                state['playing'] = False
+                update_frame(min(state['frame'] + 1, len(frames) - 1))
+            elif key == 'left':
+                state['playing'] = False
+                update_frame(max(state['frame'] - 1, 0))
+            elif key in ('q', 'escape'):
+                plt.close(fig)
+
+        timer.add_callback(on_timer)
+        timer.start()
+        fig.canvas.mpl_connect('key_press_event', on_key)
+        update_frame(0)
+
+        plt.tight_layout()
+        plt.show()
     
     def has_ground_plane(self):
         """Check if demo has ground plane constraint"""
