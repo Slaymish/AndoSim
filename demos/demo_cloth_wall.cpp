@@ -22,9 +22,6 @@ int main(int argc, char** argv) {
     std::cout << "Demo 2: Cloth Wall Collision" << std::endl;
     std::cout << "========================================" << std::endl;
     
-    // Create output directory
-    system("mkdir -p output/cloth_wall");
-    
     // Simulation parameters
     SimParams params;
     params.dt = 0.002;

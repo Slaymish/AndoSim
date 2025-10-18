@@ -16,8 +16,6 @@ int main() {
     std::cout << "Simple Gravity Test" << std::endl;
     std::cout << "========================================" << std::endl;
     
-    system("mkdir -p output/simple_fall");
-    
     // Material
     Material material;
     material.youngs_modulus = 1e5;

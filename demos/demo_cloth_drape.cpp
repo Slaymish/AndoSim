@@ -23,9 +23,6 @@ int main(int argc, char** argv) {
     std::cout << "Demo 1: Cloth Draping onto Ground" << std::endl;
     std::cout << "========================================" << std::endl;
     
-    // Create output directory
-    system("mkdir -p output/cloth_drape");
-    
     // Simulation parameters
     SimParams params;
     params.dt = 0.002;              // 2ms time step

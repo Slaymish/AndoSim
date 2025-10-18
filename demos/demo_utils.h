@@ -6,9 +6,29 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <filesystem>
+#include <system_error>
 
 namespace ando_barrier {
 namespace demos {
+
+namespace detail {
+
+inline void ensure_parent_directory(const std::string& filename) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path path(filename);
+    fs::path parent = path.has_filename() ? path.parent_path() : path;
+    if (!parent.empty()) {
+        fs::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "Warning: failed to create directory " << parent
+                      << " (" << ec.message() << ")" << std::endl;
+        }
+    }
+}
+
+} // namespace detail
 
 /**
  * Simple OBJ file exporter for visualization
@@ -26,6 +46,8 @@ public:
     static void export_frame(const std::string& filename, 
                             const Mesh& mesh, 
                             const State& state) {
+        detail::ensure_parent_directory(filename);
+
         std::ofstream file(filename);
         if (!file.is_open()) {
             std::cerr << "Failed to open " << filename << std::endl;
