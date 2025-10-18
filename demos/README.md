@@ -26,6 +26,36 @@ cd demos
 ./run_showcase.py --no-viz all
 ```
 
+### 💾 Cached Simulation Mode
+
+**NEW!** All demos now support `--cached` to skip simulation and load pre-existing OBJ files:
+
+```bash
+# Run simulation once (takes time, exports OBJ files)
+python demo_flag_wave.py
+
+# Later: Load cached results instantly
+python demo_flag_wave.py --cached
+
+# Customize options
+python demo_flag_wave.py --frames 600 --output my_test
+python demo_flag_wave.py --cached --output my_test
+```
+
+**Benefits:**
+- ⚡ Instant visualization (no simulation wait)
+- 🔄 Re-test visualization parameters without re-simulating
+- 📦 Share exact results as OBJ sequences
+- 🐛 Debug individual frames in external tools
+
+**Options:**
+- `--cached` - Load from OBJ files instead of simulating
+- `--frames N` - Number of frames to simulate
+- `--output DIR` - OBJ file directory
+- `--dt SECONDS` - Timestep (some demos)
+
+See [CACHED_SIMULATION_USAGE.md](../CACHED_SIMULATION_USAGE.md) for full documentation.
+
 ### Available Showcase Demos
 
 #### 1. **Waving Flag** (`demo_flag_wave.py`)

@@ -8,6 +8,10 @@ import sys
 import os
 import time
 
+# Ensure PyVista runs in interactive, on-screen mode even if global theme defaults differ
+os.environ.setdefault("PYVISTA_INTERACTIVE", "1")
+os.environ.setdefault("PYVISTA_OFF_SCREEN", "0")
+
 # Add build directory to path for module import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'build'))
 
@@ -16,6 +20,12 @@ HAS_MATPLOTLIB = False
 
 try:
     import pyvista as pv
+    # Override global defaults that disable interaction in newer PyVista releases
+    pv.OFF_SCREEN = False
+    pv.BUILDING_GALLERY = False
+    pv.global_theme.interactive = True
+    if hasattr(pv.global_theme, "notebook"):
+        pv.global_theme.notebook = False
     HAS_PYVISTA = True
 except ImportError:
     print("PyVista not installed. Install with: pip install pyvista")
@@ -49,6 +59,66 @@ class PhysicsDemo:
     def setup(self):
         """Override: Set up mesh, materials, constraints"""
         raise NotImplementedError
+    
+    def load_cached(self, cache_dir):
+        """Load cached simulation from OBJ sequence"""
+        import glob
+        
+        if not os.path.exists(cache_dir):
+            raise FileNotFoundError(f"Cache directory not found: {cache_dir}")
+        
+        # Find all OBJ files
+        obj_files = sorted(glob.glob(os.path.join(cache_dir, "frame_*.obj")))
+        
+        if not obj_files:
+            raise FileNotFoundError(f"No OBJ files found in {cache_dir}")
+        
+        print(f"\n{'='*60}")
+        print(f"Demo: {self.name}")
+        print(f"{'='*60}")
+        print(f"Loading cached simulation from: {cache_dir}")
+        print(f"Found {len(obj_files)} frames")
+        print()
+        
+        # Load first frame to get topology
+        vertices, triangles = self._load_obj(obj_files[0])
+        self.rest_positions = vertices
+        self.triangles = triangles
+        
+        # Load all frames
+        print("Loading frames...")
+        for i, obj_file in enumerate(obj_files):
+            verts, _ = self._load_obj(obj_file)
+            self.frames.append(verts)
+            
+            if (i + 1) % 50 == 0:
+                print(f"  Loaded {i+1}/{len(obj_files)} frames")
+        
+        print(f"\n{'='*60}")
+        print(f"Cache loaded successfully!")
+        print(f"Frames: {len(self.frames)}")
+        print(f"Vertices: {len(self.rest_positions)}")
+        print(f"Triangles: {len(self.triangles)}")
+        print(f"{'='*60}\n")
+    
+    def _load_obj(self, filepath):
+        """Load vertices and faces from OBJ file"""
+        vertices = []
+        faces = []
+        
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('v '):
+                    parts = line.split()
+                    vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                elif line.startswith('f '):
+                    parts = line.split()
+                    # OBJ faces are 1-indexed, convert to 0-indexed
+                    face = [int(p.split('/')[0]) - 1 for p in parts[1:]]
+                    faces.append(face)
+        
+        return np.array(vertices, dtype=np.float32), np.array(faces, dtype=np.int32)
         
     def run(self, num_frames=200, dt=0.01):
         """Run simulation and collect frames"""
@@ -131,6 +201,48 @@ class PhysicsDemo:
 
         # Create plotter
         plotter = pv.Plotter(window_size=window_size)
+        # Explicitly enable interactive mode; recent PyVista themes default to non-interactive
+        plotter.theme.interactive = True
+        plotter.enable_trackball_style()
+        iren_enabled = False
+        iren_initialized = False
+        iren = getattr(plotter, "iren", None)
+        vtk_iren = getattr(iren, "interactor", None) if iren is not None else None
+        try:
+            if iren is not None and hasattr(iren, "initialize"):
+                iren.initialize()
+                iren_initialized = True
+            if vtk_iren is not None:
+                if hasattr(vtk_iren, "Initialize"):
+                    vtk_iren.Initialize()
+                if hasattr(vtk_iren, "Enable"):
+                    vtk_iren.Enable()
+                if hasattr(vtk_iren, "GetEnabled"):
+                    iren_enabled = bool(vtk_iren.GetEnabled())
+        except Exception as exc:
+            print(f"PyVista warning: failed to initialize interactor ({exc})")
+        # Verbose debug hooks to track interaction events
+        if vtk_iren is not None:
+            def _debug_key_event(obj, evt):
+                try:
+                    key_sym = vtk_iren.GetKeySym()
+                except Exception:
+                    key_sym = str(evt)
+                print(f"[PyVista] KeyPressEvent: {key_sym}")
+            def _debug_start_interaction(obj, evt):
+                print("[PyVista] StartInteractionEvent triggered")
+            try:
+                iren.add_observer('KeyPressEvent', _debug_key_event)
+                iren.add_observer('StartInteractionEvent', _debug_start_interaction)
+            except Exception as exc:
+                print(f"PyVista warning: failed to add debug observers ({exc})")
+        # Helpful diagnostics (printed once) so users can confirm interactivity is enabled
+        print(f"PyVista debug → theme: {type(plotter.theme).__name__}, "
+              f"interactive={plotter.theme.interactive}, "
+              f"off_screen={plotter.off_screen}, "
+              f"notebook={plotter.notebook}, "
+              f"iren_initialized={iren_initialized}, "
+              f"iren_enabled={iren_enabled}")
         plotter.set_background('white')
         plotter.add_axes()
         
@@ -184,16 +296,19 @@ class PhysicsDemo:
         
         frame_delay = 1.0 / fps
         
+        # Create status text actor once
+        status_actor = plotter.add_text(
+            f"Frame 0/{len(self.frames)-1} | Paused",
+            position='upper_left',
+            font_size=12,
+            name='status'
+        )
+        
         def set_status():
             status_text = f"Frame {anim_state['frame']}/{len(self.frames)-1} | {'Playing' if anim_state['playing'] else 'Paused'}"
-            plotter.add_text(
-                status_text,
-                position='upper_left',
-                font_size=12,
-                name='status'
-            )
+            status_actor.SetText(2, status_text)
 
-        def update_frame(frame_idx, *, render=True):
+        def update_frame(frame_idx, force_render=True):
             """Update mesh to specific frame"""
             positions = self.frames[frame_idx]
             np_positions = np.asarray(positions)
@@ -203,10 +318,13 @@ class PhysicsDemo:
             else:
                 mesh.points = np_positions
             mesh.compute_normals(inplace=True)
-            mesh.modified()
-            if render and plotter.iren and plotter.iren.initialized:
-                plotter.render()
+            # Call modified() if available (VTK method)
+            if hasattr(mesh, 'modified'):
+                mesh.modified()
             set_status()
+            # Only render if window is already shown
+            if force_render and hasattr(plotter, '_rendering_initialized'):
+                plotter.render()
         
         def animation_callback():
             """Repeated callback to advance frames when playing."""
@@ -238,6 +356,7 @@ class PhysicsDemo:
                 status_text = 'Playing' if anim_state['playing'] else 'Paused'
                 print(status_text)
                 set_status()
+                plotter.render()
             except Exception as e:
                 print(f"Error in on_space: {e}")
                 import traceback
@@ -246,12 +365,10 @@ class PhysicsDemo:
         def on_right():
             """Step forward"""
             try:
+                anim_state['playing'] = False
                 anim_state['frame'] = min(anim_state['frame'] + 1, len(self.frames) - 1)
                 update_frame(anim_state['frame'])
                 print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
-                anim_state['playing'] = False
-                anim_state['last_update'] = time.time()
-                set_status()
             except Exception as e:
                 print(f"Error in on_right: {e}")
                 import traceback
@@ -260,12 +377,10 @@ class PhysicsDemo:
         def on_left():
             """Step backward"""
             try:
+                anim_state['playing'] = False
                 anim_state['frame'] = max(anim_state['frame'] - 1, 0)
                 update_frame(anim_state['frame'])
                 print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
-                anim_state['playing'] = False
-                anim_state['last_update'] = time.time()
-                set_status()
             except Exception as e:
                 print(f"Error in on_left: {e}")
                 import traceback
@@ -288,16 +403,14 @@ class PhysicsDemo:
         for key in ('q', 'Q', 'Escape'):
             plotter.add_key_event(key, lambda: plotter.close())
         
-        # Initial setup - just set geometry, don't update/render yet
-        positions = self.frames[0]
-        mesh.points = positions
-        mesh.compute_normals(inplace=True)
-        
-        # Add initial status text
-        set_status()
+        # Set initial frame (without rendering yet)
+        update_frame(0, force_render=False)
         anim_state['last_update'] = time.time()
         
-        # Show (this initializes the interactor)
+        # Mark that we're about to show the window
+        plotter._rendering_initialized = True
+        
+        # Show (this starts the render loop and blocks until window closes)
         plotter.show()
 
     def _visualize_with_matplotlib(self, fps):

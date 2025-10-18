@@ -178,15 +178,34 @@ class WavingFlagDemo(PhysicsDemo):
 
 
 if __name__ == '__main__':
-    demo = WavingFlagDemo()
-    demo.run(num_frames=300)
+    import argparse
     
-    # Export OBJ sequence
-    demo.export_obj_sequence('output/flag_wave')
+    parser = argparse.ArgumentParser(description='Waving Flag Demo')
+    parser.add_argument('--cached', action='store_true', 
+                        help='Load cached simulation from output/flag_wave instead of running simulation')
+    parser.add_argument('--frames', type=int, default=300,
+                        help='Number of frames to simulate (default: 300)')
+    parser.add_argument('--output', type=str, default='output/flag_wave',
+                        help='Output directory for OBJ files (default: output/flag_wave)')
+    args = parser.parse_args()
+    
+    demo = WavingFlagDemo()
+    
+    if args.cached:
+        # Load from cached OBJ files
+        demo.load_cached(args.output)
+    else:
+        # Run simulation
+        demo.run(num_frames=args.frames)
+        
+        # Export OBJ sequence
+        demo.export_obj_sequence(args.output)
     
     # Visualize if PyVista available
     try:
         demo.visualize(window_size=(1600, 900), fps=60)
     except Exception as e:
         print(f"Visualization failed: {e}")
-        print("OBJ sequence exported to output/flag_wave/")
+        if not args.cached:
+            print(f"OBJ sequence exported to {args.output}/")
+

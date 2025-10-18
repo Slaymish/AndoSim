@@ -3,8 +3,19 @@
 Minimal test to debug PyVista key events
 """
 
+import os
+
+os.environ.setdefault("PYVISTA_INTERACTIVE", "1")
+os.environ.setdefault("PYVISTA_OFF_SCREEN", "0")
+
 import pyvista as pv
 import numpy as np
+
+pv.OFF_SCREEN = False
+pv.BUILDING_GALLERY = False
+pv.global_theme.interactive = True
+if hasattr(pv.global_theme, "notebook"):
+    pv.global_theme.notebook = False
 
 print("Testing PyVista key events...")
 print("Try pressing: Space, a, Left, Right, q")
@@ -23,6 +34,19 @@ def on_any_key():
 
 # Create plotter
 plotter = pv.Plotter()
+plotter.theme.interactive = True
+iren = getattr(plotter, "iren", None)
+vtk_iren = getattr(iren, "interactor", None) if iren is not None else None
+try:
+    if iren is not None and hasattr(iren, "initialize"):
+        iren.initialize()
+    if vtk_iren is not None:
+        if hasattr(vtk_iren, "Initialize"):
+            vtk_iren.Initialize()
+        if hasattr(vtk_iren, "Enable"):
+            vtk_iren.Enable()
+except Exception as exc:
+    print(f"Warning: interactor init failed ({exc})")
 plotter.add_mesh(sphere)
 
 # Try multiple key bindings

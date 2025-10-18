@@ -134,15 +134,36 @@ class CascadingCurtainsDemo(PhysicsDemo):
 
 
 if __name__ == '__main__':
-    demo = CascadingCurtainsDemo()
-    demo.run(num_frames=500, dt=0.004)
+    import argparse
     
-    # Export OBJ sequence
-    demo.export_obj_sequence('output/cascading_curtains')
+    parser = argparse.ArgumentParser(description='Cascading Curtains Demo')
+    parser.add_argument('--cached', action='store_true',
+                        help='Load cached simulation from output directory instead of running simulation')
+    parser.add_argument('--frames', type=int, default=500,
+                        help='Number of frames to simulate (default: 500)')
+    parser.add_argument('--dt', type=float, default=0.004,
+                        help='Time step in seconds (default: 0.004)')
+    parser.add_argument('--output', type=str, default='output/cascading_curtains',
+                        help='Output directory for OBJ files (default: output/cascading_curtains)')
+    args = parser.parse_args()
+    
+    demo = CascadingCurtainsDemo()
+    
+    if args.cached:
+        # Load from cached OBJ files
+        demo.load_cached(args.output)
+    else:
+        # Run simulation
+        demo.run(num_frames=args.frames, dt=args.dt)
+        
+        # Export OBJ sequence
+        demo.export_obj_sequence(args.output)
     
     # Visualize
     try:
         demo.visualize(window_size=(1600, 900), fps=60)
     except Exception as e:
         print(f"Visualization failed: {e}")
-        print("OBJ sequence exported to output/cascading_curtains/")
+        if not args.cached:
+            print(f"OBJ sequence exported to {args.output}/")
+

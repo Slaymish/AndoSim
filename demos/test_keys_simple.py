@@ -3,7 +3,18 @@
 Simpler test based on PyVista docs pattern
 """
 
+import os
+
+os.environ.setdefault("PYVISTA_INTERACTIVE", "1")
+os.environ.setdefault("PYVISTA_OFF_SCREEN", "0")
+
 import pyvista as pv
+
+pv.OFF_SCREEN = False
+pv.BUILDING_GALLERY = False
+pv.global_theme.interactive = True
+if hasattr(pv.global_theme, "notebook"):
+    pv.global_theme.notebook = False
 
 print("PyVista Key Event Test")
 print("=" * 50)
@@ -19,6 +30,19 @@ sphere = pv.Sphere()
 
 # Plotter
 p = pv.Plotter()
+p.theme.interactive = True
+iren = getattr(p, "iren", None)
+vtk_iren = getattr(iren, "interactor", None) if iren is not None else None
+try:
+    if iren is not None and hasattr(iren, "initialize"):
+        iren.initialize()
+    if vtk_iren is not None:
+        if hasattr(vtk_iren, "Initialize"):
+            vtk_iren.Initialize()
+        if hasattr(vtk_iren, "Enable"):
+            vtk_iren.Enable()
+except Exception as exc:
+    print(f"Warning: interactor init failed ({exc})")
 p.add_mesh(sphere, color='tan')
 
 # Define callback BEFORE show()
