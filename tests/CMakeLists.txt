@@ -13,6 +13,7 @@ add_executable(test_basic
     ${CMAKE_SOURCE_DIR}/src/core/constraints.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
     ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
 )
 target_include_directories(test_basic PRIVATE 
     ${CMAKE_SOURCE_DIR}/src/core

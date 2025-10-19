@@ -13,6 +13,7 @@
 #include "integrator.h"
 #include "collision.h"
 #include "energy_tracker.h"
+#include "collision_validator.h"
 
 namespace py = pybind11;
 using namespace ando_barrier;
@@ -300,4 +301,47 @@ PYBIND11_MODULE(ando_barrier_core, m) {
             "Compute angular momentum")
         .def_static("compute_max_velocity", &EnergyTracker::compute_max_velocity,
             "Compute maximum velocity");
+    
+    // CollisionMetrics struct
+    py::class_<CollisionMetrics>(m, "CollisionMetrics")
+        .def(py::init<>())
+        .def_readonly("num_point_triangle", &CollisionMetrics::num_point_triangle)
+        .def_readonly("num_edge_edge", &CollisionMetrics::num_edge_edge)
+        .def_readonly("num_wall", &CollisionMetrics::num_wall)
+        .def_readonly("num_total_contacts", &CollisionMetrics::num_total_contacts)
+        .def_readonly("min_gap", &CollisionMetrics::min_gap)
+        .def_readonly("max_gap", &CollisionMetrics::max_gap)
+        .def_readonly("avg_gap", &CollisionMetrics::avg_gap)
+        .def_readonly("num_penetrations", &CollisionMetrics::num_penetrations)
+        .def_readonly("max_penetration", &CollisionMetrics::max_penetration)
+        .def_readonly("avg_penetration", &CollisionMetrics::avg_penetration)
+        .def_readonly("ccd_enabled", &CollisionMetrics::ccd_enabled)
+        .def_readonly("num_ccd_contacts", &CollisionMetrics::num_ccd_contacts)
+        .def_readonly("num_broad_phase_contacts", &CollisionMetrics::num_broad_phase_contacts)
+        .def_readonly("ccd_effectiveness", &CollisionMetrics::ccd_effectiveness)
+        .def_readonly("max_relative_velocity", &CollisionMetrics::max_relative_velocity)
+        .def_readonly("avg_relative_velocity", &CollisionMetrics::avg_relative_velocity)
+        .def_readonly("has_tunneling", &CollisionMetrics::has_tunneling)
+        .def_readonly("has_major_penetration", &CollisionMetrics::has_major_penetration)
+        .def_readonly("is_stable", &CollisionMetrics::is_stable)
+        .def("quality_level", &CollisionMetrics::quality_level)
+        .def("quality_description", &CollisionMetrics::quality_description);
+    
+    // CollisionValidator class
+    py::class_<CollisionValidator>(m, "CollisionValidator")
+        .def(py::init<>())
+        .def_static("compute_metrics", &CollisionValidator::compute_metrics,
+            py::arg("mesh"), py::arg("state"), py::arg("contacts"),
+            py::arg("gap_max"), py::arg("ccd_enabled"),
+            "Compute comprehensive collision metrics")
+        .def_static("has_penetrations",
+            [](const std::vector<ContactPair>& contacts) {
+                return CollisionValidator::has_penetrations(contacts);
+            },
+            "Check if any contacts have penetrations")
+        .def_static("max_penetration_depth",
+            [](const std::vector<ContactPair>& contacts) {
+                return CollisionValidator::max_penetration_depth(contacts);
+            },
+            "Get maximum penetration depth");
 }

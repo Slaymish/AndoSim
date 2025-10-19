@@ -16,6 +16,7 @@ add_executable(demo_cloth_drape
     ${CMAKE_SOURCE_DIR}/src/core/constraints.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
     ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
 )
 
 target_include_directories(demo_cloth_drape PRIVATE
@@ -36,6 +37,7 @@ add_executable(demo_cloth_wall
     ${CMAKE_SOURCE_DIR}/src/core/constraints.cpp
     ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
     ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
 )
 
 target_include_directories(demo_cloth_wall PRIVATE

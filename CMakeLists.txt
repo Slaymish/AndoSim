@@ -49,6 +49,7 @@ set(CORE_SOURCES
     src/core/pcg_solver.cpp
     src/core/friction.cpp
     src/core/energy_tracker.cpp
+    src/core/collision_validator.cpp
 )
 
 # Core library headers
@@ -67,6 +68,7 @@ set(CORE_HEADERS
     src/core/pcg_solver.h
     src/core/friction.h
     src/core/energy_tracker.h
+    src/core/collision_validator.h
     src/core/types.h
 )
 

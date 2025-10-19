@@ -2,6 +2,7 @@
 #include "elasticity.h"
 #include "barrier.h"
 #include "stiffness.h"
+#include "friction.h"
 #include "line_search.h"
 #include "pcg_solver.h"
 #include <iostream>
@@ -266,6 +267,49 @@ void Integrator::compute_gradient(
                                            params.contact_gap_max, k_bar, gradient);
         }
     }
+    
+    // 5. Friction forces (if enabled)
+    if (params.enable_friction && params.friction_mu > 0.0) {
+        for (const auto& contact : contacts) {
+            // Only apply friction to active contacts with sufficient motion
+            Vec3 tangential = FrictionModel::extract_tangential(
+                state.positions[contact.idx0] - state.positions_prev[contact.idx0],
+                contact.normal
+            );
+            
+            if (!FrictionModel::should_apply_friction(tangential)) {
+                continue;  // Skip stationary contacts
+            }
+            
+            // Estimate normal force from contact stiffness and gap
+            Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
+            Real k_contact = Stiffness::compute_contact_stiffness(
+                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
+            );
+            Real normal_force_estimate = k_contact * std::abs(contact.gap);
+            
+            // Compute friction stiffness
+            Real k_friction = FrictionModel::compute_friction_stiffness(
+                normal_force_estimate,
+                params.friction_mu,
+                params.friction_epsilon
+            );
+            
+            // Compute friction gradient (restoring force opposing tangential motion)
+            Vec3 friction_grad = FrictionModel::compute_gradient(
+                state.positions[contact.idx0],
+                state.positions_prev[contact.idx0],
+                contact.normal,
+                k_friction
+            );
+            
+            // Add to gradient vector
+            int idx = static_cast<int>(contact.idx0);
+            gradient[3*idx + 0] += friction_grad[0];
+            gradient[3*idx + 1] += friction_grad[1];
+            gradient[3*idx + 2] += friction_grad[2];
+        }
+    }
 }
 
 void Integrator::assemble_system_matrix(
@@ -378,6 +422,50 @@ void Integrator::assemble_system_matrix(
         }
     }
 
+    // 5. Friction Hessians (if enabled)
+    if (params.enable_friction && params.friction_mu > 0.0) {
+        for (const auto& contact : contacts) {
+            // Only apply friction to active contacts with sufficient motion
+            Vec3 tangential = FrictionModel::extract_tangential(
+                state.positions[contact.idx0] - state.positions_prev[contact.idx0],
+                contact.normal
+            );
+            
+            if (!FrictionModel::should_apply_friction(tangential)) {
+                continue;  // Skip stationary contacts
+            }
+            
+            // Estimate normal force from contact stiffness and gap
+            // F_n ≈ k_contact * gap (simplified for friction stiffness)
+            Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
+            Real k_contact = Stiffness::compute_contact_stiffness(
+                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
+            );
+            Real normal_force_estimate = k_contact * std::abs(contact.gap);
+            
+            // Compute friction stiffness
+            Real k_friction = FrictionModel::compute_friction_stiffness(
+                normal_force_estimate,
+                params.friction_mu,
+                params.friction_epsilon
+            );
+            
+            // Compute friction Hessian (3×3 block for vertex)
+            Mat3 friction_hess = FrictionModel::compute_hessian(contact.normal, k_friction);
+            
+            // Add to triplets (diagonal block only, since friction is per-vertex)
+            int idx = static_cast<int>(contact.idx0);
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    Real val = friction_hess(i, j);
+                    if (std::abs(val) > 1e-12) {
+                        triplets.push_back(Triplet(3*idx + i, 3*idx + j, val));
+                    }
+                }
+            }
+        }
+    }
+    
     // Build sparse matrix from triplets
     hessian.setFromTriplets(triplets.begin(), triplets.end());
     

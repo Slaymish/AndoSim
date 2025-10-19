@@ -308,6 +308,64 @@ class ANDO_PT_debug_panel(Panel):
                 if len(stats.get('energy_history', [])) > 2:
                     box.separator()
                     box.label(text=f"History: {len(stats['energy_history'])} frames tracked")
+                
+                # Collision quality metrics
+                box = layout.box()
+                box.label(text="Collision Quality", icon='MESH_DATA')
+                
+                # Quality level with color coding
+                quality_level = stats.get('collision_quality', 0)
+                quality_desc = stats.get('collision_quality_desc', 'Unknown')
+                
+                row = box.row()
+                if quality_level == 3:
+                    row.alert = True
+                    row.label(text=f"⚠ {quality_desc}", icon='ERROR')
+                elif quality_level == 2:
+                    row.label(text=f"⚡ {quality_desc}", icon='INFO')
+                elif quality_level == 1:
+                    row.label(text=f"✓ {quality_desc}")
+                else:
+                    row.label(text=f"✓ {quality_desc}")
+                
+                # Gap statistics
+                box.separator()
+                col = box.column(align=True)
+                col.label(text="Gap Statistics:")
+                min_gap = stats.get('min_gap', 0.0) * 1000  # Convert to mm
+                max_gap = stats.get('max_gap', 0.0) * 1000
+                avg_gap = stats.get('avg_gap', 0.0) * 1000
+                col.label(text=f"  Min: {min_gap:.2f} mm")
+                col.label(text=f"  Max: {max_gap:.2f} mm")
+                col.label(text=f"  Avg: {avg_gap:.2f} mm")
+                
+                # Penetration detection
+                num_pen = stats.get('num_penetrations', 0)
+                if num_pen > 0:
+                    box.separator()
+                    row = box.row()
+                    row.alert = True
+                    max_pen = stats.get('max_penetration', 0.0) * 1000  # mm
+                    row.label(text=f"⚠ {num_pen} penetrations", icon='ERROR')
+                    col = box.column(align=True)
+                    col.label(text=f"  Max depth: {max_pen:.3f} mm")
+                    
+                    if stats.get('has_tunneling', False):
+                        row = box.row()
+                        row.alert = True
+                        row.label(text="  TUNNELING DETECTED", icon='ERROR')
+                
+                # CCD effectiveness (if enabled)
+                if stats.get('ccd_effectiveness', 0.0) > 0:
+                    box.separator()
+                    ccd_eff = stats.get('ccd_effectiveness', 0.0)
+                    box.label(text=f"CCD: {ccd_eff:.1f}% effectiveness")
+                
+                # Relative velocity
+                max_rel_v = stats.get('max_relative_velocity', 0.0)
+                if max_rel_v > 0.01:  # Only show if significant
+                    box.separator()
+                    box.label(text=f"Max impact: {max_rel_v:.2f} m/s")
                     
         except ImportError:
             layout.label(text="Core module not loaded", icon='ERROR')

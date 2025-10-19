@@ -24,6 +24,18 @@ def _default_stats():
         'angular_momentum': [0.0, 0.0, 0.0],
         'energy_history': [],  # List of total energy per frame
         'frame_history': [],    # Corresponding frame numbers
+        # Collision validation
+        'collision_quality': 0,  # 0=excellent, 1=good, 2=warning, 3=error
+        'collision_quality_desc': 'Unknown',
+        'num_penetrations': 0,
+        'max_penetration': 0.0,
+        'avg_gap': 0.0,
+        'min_gap': 0.0,
+        'max_gap': 0.0,
+        'ccd_effectiveness': 0.0,
+        'max_relative_velocity': 0.0,
+        'has_tunneling': False,
+        'has_major_penetration': False,
     }
 
 
@@ -116,14 +128,16 @@ class ANDO_OT_bake_simulation(Operator):
         pin_positions_world = []  # Store for later reference
         if pin_group_name in obj.vertex_groups:
             pin_group = obj.vertex_groups[pin_group_name]
+            matrix_world = obj.matrix_world
             for i, v in enumerate(mesh_data.vertices):
                 try:
                     weight = pin_group.weight(i)
                     if weight > 0.5:  # Threshold for pinning
-                        # Store vertex position in world space
-                        pin_pos_world = obj.matrix_world @ v.co
-                        pin_pos = np.array(pin_pos_world, dtype=np.float32)
-                        constraints.add_pin(i, pin_pos)
+                        # Use object-space coordinates for physics
+                        pin_pos_local = np.array(v.co, dtype=np.float32)
+                        constraints.add_pin(i, pin_pos_local)
+                        # Keep world-space copies for optional debug/visualization
+                        pin_pos_world = matrix_world @ v.co
                         pin_positions_world.append(pin_pos_world.copy())
                         num_pins_added += 1
                 except RuntimeError:
@@ -355,16 +369,18 @@ class ANDO_OT_init_realtime_simulation(Operator):
         # Extract pin constraints
         pin_group_name = "ando_pins"
         num_pins_added = 0
-        pin_positions = []
+        pin_positions_world = []
         if pin_group_name in obj.vertex_groups:
             pin_group = obj.vertex_groups[pin_group_name]
+            matrix_world = obj.matrix_world
             for i, v in enumerate(mesh_data.vertices):
                 try:
                     weight = pin_group.weight(i)
                     if weight > 0.5:
-                        pin_pos = np.array(v.co, dtype=np.float32)
-                        constraints.add_pin(i, pin_pos)
-                        pin_positions.append(tuple(pin_pos))
+                        pin_pos_local = np.array(v.co, dtype=np.float32)
+                        constraints.add_pin(i, pin_pos_local)
+                        pin_pos_world = matrix_world @ v.co
+                        pin_positions_world.append(tuple(pin_pos_world))
                         num_pins_added += 1
                 except RuntimeError:
                     pass
@@ -383,7 +399,7 @@ class ANDO_OT_init_realtime_simulation(Operator):
         _sim_state['frame'] = 0
         _sim_state['playing'] = False
         _sim_state['stats'] = _default_stats()
-        _sim_state['debug_pins'] = pin_positions
+        _sim_state['debug_pins'] = pin_positions_world
         _sim_state['stats']['num_pins'] = num_pins_added
         
         self.report({'INFO'}, f"Initialized: {len(vertices)} vertices, {num_pins_added} pins")
@@ -484,6 +500,12 @@ class ANDO_OT_step_simulation(Operator):
         
         # Collect contact data for visualization and statistics
         contacts = abc.Integrator.compute_contacts(mesh, state)
+        
+        # Compute collision validation metrics
+        collision_metrics = abc.CollisionValidator.compute_metrics(
+            mesh, state, contacts, params.contact_gap_max, params.enable_ccd
+        )
+        
         debug_contacts = []
         contact_counter = Counter()
         for contact in contacts:
@@ -506,6 +528,19 @@ class ANDO_OT_step_simulation(Operator):
         stats['num_contacts'] = current_count
         stats['contact_counts'] = dict(contact_counter)
         stats['peak_contacts'] = max(stats.get('peak_contacts', 0), current_count)
+        
+        # Update collision quality metrics
+        stats['collision_quality'] = collision_metrics.quality_level()
+        stats['collision_quality_desc'] = collision_metrics.quality_description()
+        stats['num_penetrations'] = collision_metrics.num_penetrations
+        stats['max_penetration'] = collision_metrics.max_penetration
+        stats['avg_gap'] = collision_metrics.avg_gap
+        stats['min_gap'] = collision_metrics.min_gap
+        stats['max_gap'] = collision_metrics.max_gap
+        stats['ccd_effectiveness'] = collision_metrics.ccd_effectiveness
+        stats['max_relative_velocity'] = collision_metrics.max_relative_velocity
+        stats['has_tunneling'] = collision_metrics.has_tunneling
+        stats['has_major_penetration'] = collision_metrics.has_major_penetration
         peak_by_type = dict(stats.get('peak_contact_counts', {}))
         for ctype, count in contact_counter.items():
             peak_by_type[ctype] = max(peak_by_type.get(ctype, 0), count)
