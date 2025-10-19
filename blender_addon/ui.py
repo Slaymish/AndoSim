@@ -26,6 +26,17 @@ class ANDO_PT_main_panel(Panel):
         box = layout.box()
         box.label(text="Time Integration", icon='TIME')
         box.prop(props, "dt")
+        
+        # Adaptive timestepping
+        col = box.column(align=True)
+        col.prop(props, "enable_adaptive_dt", toggle=True)
+        if props.enable_adaptive_dt:
+            sub = col.box()
+            sub.label(text="CFL Parameters:", icon='AUTO')
+            sub.prop(props, "dt_min", text="Min Δt")
+            sub.prop(props, "dt_max", text="Max Δt")
+            sub.prop(props, "cfl_safety_factor", text="Safety Factor")
+        
         box.prop(props, "beta_max")
         
         # Newton solver
@@ -234,9 +245,34 @@ class ANDO_PT_debug_panel(Panel):
             box.operator("ando.toggle_debug_visualization", text=vis_text, icon=vis_icon)
             
             if visualization.is_visualization_enabled():
-                box.label(text="Red = Contacts", icon='DOT')
-                box.label(text="Green = Normals", icon='DOT')
-                box.label(text="Blue = Pins", icon='DOT')
+                # Heatmap toggles
+                col = box.column(align=True)
+                col.prop(context.scene.ando_barrier, "show_gap_heatmap", text="Gap Heatmap", toggle=True)
+                col.prop(context.scene.ando_barrier, "show_strain_overlay", text="Strain Overlay", toggle=True)
+                
+                # Show legend only if heatmaps are off
+                props = context.scene.ando_barrier
+                if not props.show_gap_heatmap and not props.show_strain_overlay:
+                    box.separator()
+                    box.label(text="Contact Legend:", icon='DOT')
+                    box.label(text="  Red = Point-Triangle")
+                    box.label(text="  Orange = Edge-Edge")
+                    box.label(text="  Yellow = Wall")
+                    box.label(text="  Blue = Pins")
+                elif props.show_gap_heatmap:
+                    box.separator()
+                    box.label(text="Gap Heatmap Legend:", icon='DOT')
+                    box.label(text="  Red = Contact (< 0.1mm)")
+                    box.label(text="  Yellow = Close (< 0.3mm)")
+                    box.label(text="  Green = Safe (> 1mm)")
+                    box.prop(props, "gap_heatmap_range")
+                elif props.show_strain_overlay:
+                    box.separator()
+                    box.label(text="Strain Legend:", icon='DOT')
+                    box.label(text="  Blue = No stretch")
+                    box.label(text="  Green = Mild stretch")
+                    box.label(text="  Yellow = Moderate")
+                    box.label(text="  Red = At limit")
             
             # Statistics
             if sim_state['initialized']:

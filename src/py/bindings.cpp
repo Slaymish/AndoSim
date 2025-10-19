@@ -14,6 +14,7 @@
 #include "collision.h"
 #include "energy_tracker.h"
 #include "collision_validator.h"
+#include "adaptive_timestep.h"
 
 namespace py = pybind11;
 using namespace ando_barrier;
@@ -344,4 +345,31 @@ PYBIND11_MODULE(ando_barrier_core, m) {
                 return CollisionValidator::max_penetration_depth(contacts);
             },
             "Get maximum penetration depth");
+    
+    // AdaptiveTimestep class
+    py::class_<AdaptiveTimestep>(m, "AdaptiveTimestep")
+        .def(py::init<>())
+        .def_static("compute_next_dt",
+            [](const VecX& velocities, const Mesh& mesh, Real current_dt,
+               Real dt_min, Real dt_max, Real safety_factor) {
+                return AdaptiveTimestep::compute_next_dt(
+                    velocities, mesh, current_dt, dt_min, dt_max, safety_factor
+                );
+            },
+            py::arg("velocities"), py::arg("mesh"), py::arg("current_dt"),
+            py::arg("dt_min"), py::arg("dt_max"), py::arg("safety_factor") = 0.5,
+            "Compute next timestep using CFL condition")
+        .def_static("compute_cfl_timestep",
+            &AdaptiveTimestep::compute_cfl_timestep,
+            py::arg("max_velocity"), py::arg("min_edge_length"), py::arg("safety_factor"),
+            "Compute CFL timestep from velocity and mesh resolution")
+        .def_static("compute_min_edge_length",
+            &AdaptiveTimestep::compute_min_edge_length,
+            py::arg("mesh"),
+            "Compute minimum edge length in mesh")
+        .def_static("compute_max_velocity",
+            &AdaptiveTimestep::compute_max_velocity,
+            py::arg("velocities"),
+            "Compute maximum velocity magnitude");
 }
+

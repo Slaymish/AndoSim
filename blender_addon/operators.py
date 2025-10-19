@@ -452,8 +452,31 @@ class ANDO_OT_step_simulation(Operator):
         constraints = _sim_state['constraints']
         params = _sim_state['params']
         
-        # Calculate steps per frame (aiming for 24 fps)
+        # Adaptive timestepping (if enabled)
         props = context.scene.ando_barrier
+        if props.enable_adaptive_dt:
+            # Compute next timestep using CFL condition
+            velocities = state.get_velocities()
+            current_dt_sec = params.dt  # In seconds
+            dt_min_sec = props.dt_min / 1000.0  # Convert ms to seconds
+            dt_max_sec = props.dt_max / 1000.0
+            
+            new_dt_sec = abc.AdaptiveTimestep.compute_next_dt(
+                velocities, mesh, current_dt_sec,
+                dt_min_sec, dt_max_sec, props.cfl_safety_factor
+            )
+            
+            # Update params
+            params.dt = new_dt_sec
+            
+            # Store dt history for diagnostics
+            if 'dt_history' not in _sim_state['stats']:
+                _sim_state['stats']['dt_history'] = []
+            _sim_state['stats']['dt_history'].append(new_dt_sec * 1000.0)  # Store as ms
+            if len(_sim_state['stats']['dt_history']) > 100:
+                _sim_state['stats']['dt_history'].pop(0)
+        
+        # Calculate steps per frame (aiming for 24 fps)
         steps_per_frame = max(1, int(1.0 / (props.dt / 1000.0) / 24.0))
         
         # Gravity vector (Blender Z-up)
@@ -570,6 +593,21 @@ class ANDO_OT_step_simulation(Operator):
                 pins=_sim_state['debug_pins'],
                 stats=_sim_state['stats']
             )
+            
+            # Update heatmaps if enabled
+            props = context.scene.ando_barrier
+            if props.show_gap_heatmap:
+                # Convert contacts to format needed by heatmap
+                heatmap_contacts = []
+                for c in contacts:
+                    heatmap_contacts.append({
+                        'position': tuple(float(x) for x in np.asarray(c.witness_p)),
+                        'gap': float(c.gap) if hasattr(c, 'gap') else props.contact_gap_max,
+                    })
+                visualization.update_gap_heatmap(obj, heatmap_contacts, props.contact_gap_max)
+            
+            if props.show_strain_overlay:
+                visualization.update_strain_heatmap(obj, state, props.strain_limit / 100.0)
         
         self.report({'INFO'}, f"Frame {_sim_state['frame']}")
         return {'FINISHED'}

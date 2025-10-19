@@ -316,6 +316,39 @@ class AndoBarrierSceneProperties(PropertyGroup):
         update=_mark_scene_custom,
     )
     
+    # Adaptive timestepping
+    enable_adaptive_dt: BoolProperty(
+        name="Enable Adaptive Timestep",
+        description="Dynamically adjust timestep based on CFL condition",
+        default=False,
+    )
+    
+    dt_min: FloatProperty(
+        name="Min Δt",
+        description="Minimum timestep in milliseconds (stability floor)",
+        default=0.1,
+        min=0.01,
+        max=5.0,
+        unit='NONE',
+    )
+    
+    dt_max: FloatProperty(
+        name="Max Δt",
+        description="Maximum timestep in milliseconds (for settled cloth)",
+        default=10.0,
+        min=1.0,
+        max=50.0,
+        unit='NONE',
+    )
+    
+    cfl_safety_factor: FloatProperty(
+        name="CFL Safety Factor",
+        description="CFL safety factor (0.5 = conservative, 1.0 = aggressive)",
+        default=0.5,
+        min=0.1,
+        max=1.0,
+    )
+    
     beta_max: FloatProperty(
         name="Beta Max",
         description="Maximum beta accumulation for integrator",
@@ -450,6 +483,28 @@ class AndoBarrierSceneProperties(PropertyGroup):
         name="Ground Height",
         description="Height of ground plane",
         default=0.0,
+        unit='LENGTH',
+    )
+    
+    # Visualization settings
+    show_gap_heatmap: BoolProperty(
+        name="Show Gap Heatmap",
+        description="Display color-coded contact gap distances (red=contact, yellow=close, green=safe)",
+        default=False,
+    )
+    
+    show_strain_overlay: BoolProperty(
+        name="Show Strain Overlay",
+        description="Display color-coded strain magnitude (blue=no stretch, green=mild, yellow=moderate, red=limit)",
+        default=False,
+    )
+    
+    gap_heatmap_range: FloatProperty(
+        name="Gap Range",
+        description="Maximum gap distance for color mapping (meters)",
+        default=0.001,
+        min=0.0001,
+        max=0.01,
         unit='LENGTH',
     )
     

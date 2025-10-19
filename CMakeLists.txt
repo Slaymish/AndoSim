@@ -50,6 +50,7 @@ set(CORE_SOURCES
     src/core/friction.cpp
     src/core/energy_tracker.cpp
     src/core/collision_validator.cpp
+    src/core/adaptive_timestep.cpp
 )
 
 # Core library headers
