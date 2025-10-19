@@ -178,35 +178,51 @@ class ANDO_OT_bake_simulation(Operator):
         # Progress tracking
         total_frames = end_frame - start_frame + 1
         
-        for frame_idx, frame in enumerate(range(start_frame, end_frame + 1)):
-            # Create shape key for this frame
-            shape_key = obj.shape_key_add(name=f'frame_{frame:04d}', from_mix=False)
-            
-            # Simulate steps for this frame
-            for step in range(steps_per_frame):
-                # Apply gravity acceleration
-                state.apply_gravity(gravity, params.dt)
+        # Initialize progress bar
+        wm = context.window_manager
+        wm.progress_begin(0, total_frames)
+        
+        try:
+            for frame_idx, frame in enumerate(range(start_frame, end_frame + 1)):
+                # Update progress bar
+                wm.progress_update(frame_idx)
                 
-                # Take physics step
-                abc.Integrator.step(mesh, state, constraints, params)
-            
-            # Update shape key with new positions
-            positions = state.get_positions()
-            for i in range(len(positions)):
-                shape_key.data[i].co = positions[i]
-            
-            # Set keyframe for shape key animation
-            shape_key.value = 0.0
-            shape_key.keyframe_insert(data_path='value', frame=frame-1)
-            shape_key.value = 1.0
-            shape_key.keyframe_insert(data_path='value', frame=frame)
-            shape_key.value = 0.0
-            shape_key.keyframe_insert(data_path='value', frame=frame+1)
-            
-            # Progress report every 10 frames or at 25%, 50%, 75%, 100%
-            progress_pct = (frame_idx + 1) * 100 // total_frames
-            if frame % 10 == 0 or progress_pct in [25, 50, 75, 100]:
-                self.report({'INFO'}, f"Baking progress: {frame}/{end_frame} ({progress_pct}%)")
+                # Check for cancellation (ESC key)
+                if context.window_manager.is_interface_locked:
+                    self.report({'WARNING'}, "Baking cancelled by user")
+                    return {'CANCELLED'}
+                
+                # Create shape key for this frame
+                shape_key = obj.shape_key_add(name=f'frame_{frame:04d}', from_mix=False)
+                
+                # Simulate steps for this frame
+                for step in range(steps_per_frame):
+                    # Apply gravity acceleration
+                    state.apply_gravity(gravity, params.dt)
+                    
+                    # Take physics step
+                    abc.Integrator.step(mesh, state, constraints, params)
+                
+                # Update shape key with new positions
+                positions = state.get_positions()
+                for i in range(len(positions)):
+                    shape_key.data[i].co = positions[i]
+                
+                # Set keyframe for shape key animation
+                shape_key.value = 0.0
+                shape_key.keyframe_insert(data_path='value', frame=frame-1)
+                shape_key.value = 1.0
+                shape_key.keyframe_insert(data_path='value', frame=frame)
+                shape_key.value = 0.0
+                shape_key.keyframe_insert(data_path='value', frame=frame+1)
+                
+                # Progress report every 10 frames or at 25%, 50%, 75%, 100%
+                progress_pct = (frame_idx + 1) * 100 // total_frames
+                if frame % 10 == 0 or progress_pct in [25, 50, 75, 100]:
+                    self.report({'INFO'}, f"Baking progress: {frame}/{end_frame} ({progress_pct}%)")
+        finally:
+            # Always clean up progress bar
+            wm.progress_end()
         
         # Final report with statistics
         num_pins = constraints.num_active_pins()
