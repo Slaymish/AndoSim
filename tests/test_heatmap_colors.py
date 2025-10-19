@@ -145,7 +145,7 @@ def test_color_continuity():
     diff = sum(abs(color_before[i] - color_after[i]) for i in range(3))
     assert diff < 0.1, f"Color discontinuity detected: diff={diff}"
     
-    print(f"  Transition continuity: Δcolor = {diff:.4f}")
+    print(f"  Transition continuity: Delta-color = {diff:.4f}")
     print("[PASS] Color continuity test passed!")
 
 if __name__ == '__main__':

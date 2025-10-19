@@ -18,7 +18,7 @@ except ImportError as e:
 def create_mesh_from_lists(vertices_list, triangles_list, material):
     """Helper to create mesh from Python lists (converts to proper numpy arrays)."""
     vertices = np.array(vertices_list, dtype=np.float32)
-    # Triangles need to be 2D array (n_triangles × 3)
+    # Triangles need to be 2D array (n_triangles x 3)
     triangles_flat = np.array(triangles_list, dtype=np.int32)
     n_tris = len(triangles_flat) // 3
     triangles = triangles_flat.reshape(n_tris, 3)
@@ -284,7 +284,7 @@ def test_compute_next_dt():
     print(f"  Normal velocity case:")
     print(f"    current_dt = {current_dt:.6f} s")
     print(f"    max_velocity = 1.0 m/s")
-    print(f"    min_edge ≈ 0.01 m")
+    print(f"    min_edge ~= 0.01 m")
     print(f"    next_dt = {next_dt:.6f} s")
     assert dt_min <= next_dt <= dt_max, "dt should be within bounds"
     assert next_dt < current_dt, "dt should decrease for high velocity"
@@ -305,9 +305,9 @@ def test_compute_next_dt():
     print(f"    max_velocity = 0.01 m/s")
     print(f"    next_dt = {next_dt:.6f} s")
     assert dt_min <= next_dt <= dt_max, "dt should be within bounds"
-    # Should increase but limited by max_increase_ratio (1.5×)
+    # Should increase but limited by max_increase_ratio (1.5x)
     # Use small epsilon for floating point comparison
-    assert next_dt <= current_dt * 1.5 + 1e-9, "dt increase should be smoothed (max 1.5×)"
+    assert next_dt <= current_dt * 1.5 + 1e-9, "dt increase should be smoothed (max 1.5x)"
     print("  [PASS] Low velocity smoothing correct")
     
     # Test case 3: Zero velocity, dt should go to dt_max
