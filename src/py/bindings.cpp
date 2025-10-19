@@ -76,12 +76,12 @@ PYBIND11_MODULE(ando_barrier_core, m) {
             auto tris_arr = triangles.unchecked<2>();
             
             std::vector<Vec3> verts;
-            for (ssize_t i = 0; i < verts_arr.shape(0); ++i) {
+            for (py::ssize_t i = 0; i < verts_arr.shape(0); ++i) {
                 verts.push_back(Vec3(verts_arr(i, 0), verts_arr(i, 1), verts_arr(i, 2)));
             }
             
             std::vector<Triangle> tris;
-            for (ssize_t i = 0; i < tris_arr.shape(0); ++i) {
+            for (py::ssize_t i = 0; i < tris_arr.shape(0); ++i) {
                 tris.push_back(Triangle{Index(tris_arr(i, 0)), Index(tris_arr(i, 1)), Index(tris_arr(i, 2))});
             }
             
@@ -210,7 +210,7 @@ PYBIND11_MODULE(ando_barrier_core, m) {
             auto grad = gradient.mutable_unchecked<1>();
             VecX grad_vec(grad.shape(0));
             Elasticity::compute_gradient(mesh, state, grad_vec);
-            for (ssize_t i = 0; i < grad.shape(0); ++i) {
+            for (py::ssize_t i = 0; i < grad.shape(0); ++i) {
                 grad(i) = grad_vec(i);
             }
         }, "Compute elastic gradient (forces)")

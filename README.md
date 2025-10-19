@@ -5,7 +5,7 @@ Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic 
 ## Quick Start
 
 **For Blender Users:**
-- See [BLENDER_QUICK_START.md](BLENDER_QUICK_START.md) for installation, usage, and tutorials
+- See [BLENDER_QUICK_START.md](docs/BLENDER_QUICK_START.md) for installation, usage, and tutorials
 
 **For Developers:**
 - Build: `./build.sh` (requires CMake, Eigen3, pybind11)
@@ -20,7 +20,7 @@ Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic 
 
 - Install CMake from https://cmake.org/download/
 - Install Eigen3 from https://eigen.tuxfamily.org/
-- Install pybind11 from pip
+- Install pybind11: `pip install "pybind11[global]"`
 
 ### 2. Build the C++ Core Module
 
@@ -31,8 +31,8 @@ From the project root directory:
 mkdir build
 cd build
 
-# Configure with CMake
-cmake .. -DCMAKE_BUILD_TYPE=Release
+# Configure with CMake (add pybind11 path if needed)
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(python3 -m pybind11 --cmakedir)
 
 # Build
 cmake --build . --config Release
@@ -40,6 +40,8 @@ cmake --build . --config Release
 # Install to blender_addon directory
 cmake --install .
 ```
+
+**Note for Windows**: Use `python -m pybind11 --cmakedir` instead of `python3`.
 
 ### 4. Install Blender Add-on
 
