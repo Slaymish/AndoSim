@@ -28,14 +28,17 @@ except ImportError as e:
 from . import ui
 from . import operators
 from . import properties
+from . import parameter_update
 
 def register():
     properties.register()
     ui.register()
     operators.register()
+    parameter_update.register()
     print("Ando Barrier Physics add-on registered")
 
 def unregister():
+    parameter_update.unregister()
     operators.unregister()
     ui.unregister()
     properties.unregister()

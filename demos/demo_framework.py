@@ -337,71 +337,52 @@ class PhysicsDemo:
                 update_frame(anim_state['frame'])
         
         # Set up timer callback
-        # PyVista passes step number as argument, so lambda must accept it
-        def timer_callback(step):
-            animation_callback()
-
+        # Use a lambda that accepts optional arguments for wider compatibility
         plotter.add_timer_event(
             max_steps=1_000_000,
             duration=max(int(frame_delay * 1000), 1),
-            callback=timer_callback,
+            callback=lambda *args: animation_callback(),
         )
         
         # Key event callbacks - define functions with closures
         def on_space():
             """Toggle play/pause"""
-            try:
-                anim_state['playing'] = not anim_state['playing']
-                anim_state['last_update'] = time.time()
-                status_text = 'Playing' if anim_state['playing'] else 'Paused'
-                print(status_text)
-                set_status()
-                plotter.render()
-            except Exception as e:
-                print(f"Error in on_space: {e}")
-                import traceback
-                traceback.print_exc()
+            anim_state['playing'] = not anim_state['playing']
+            anim_state['last_update'] = time.time()
+            status_text = 'Playing' if anim_state['playing'] else 'Paused'
+            print(status_text)
+            set_status()
+            plotter.render()
         
         def on_right():
             """Step forward"""
-            try:
-                anim_state['playing'] = False
-                anim_state['frame'] = min(anim_state['frame'] + 1, len(self.frames) - 1)
-                update_frame(anim_state['frame'])
-                print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
-            except Exception as e:
-                print(f"Error in on_right: {e}")
-                import traceback
-                traceback.print_exc()
+            anim_state['playing'] = False
+            anim_state['frame'] = min(anim_state['frame'] + 1, len(self.frames) - 1)
+            update_frame(anim_state['frame'])
+            print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
         
         def on_left():
             """Step backward"""
-            try:
-                anim_state['playing'] = False
-                anim_state['frame'] = max(anim_state['frame'] - 1, 0)
-                update_frame(anim_state['frame'])
-                print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
-            except Exception as e:
-                print(f"Error in on_left: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Register key events - try different key name variations
-        # PyVista might be case-sensitive or use different names
+            anim_state['playing'] = False
+            anim_state['frame'] = max(anim_state['frame'] - 1, 0)
+            update_frame(anim_state['frame'])
+            print(f"Frame {anim_state['frame']}/{len(self.frames)-1}")
+
+        # Register key events
         print("\nKeyboard controls:")
         print("  space - Toggle play/pause")
         print("  Right - Step forward")
         print("  Left - Step backward")
         print("  q - Quit\n")
         
-        for key in ('space', 'Space', ' ', 'Return'):
-            plotter.add_key_event(key, on_space)
-        for key in ('Right', 'right', 'd'):
-            plotter.add_key_event(key, on_right)
-        for key in ('Left', 'left', 'a'):
-            plotter.add_key_event(key, on_left)
-        for key in ('q', 'Q', 'Escape'):
-            plotter.add_key_event(key, lambda: plotter.close())
+        plotter.add_key_event('space', on_space)
+        plotter.add_key_event('Return', on_space)
+        plotter.add_key_event('Right', on_right)
+        plotter.add_key_event('d', on_right)
+        plotter.add_key_event('Left', on_left)
+        plotter.add_key_event('a', on_left)
+        plotter.add_key_event('q', lambda: plotter.close())
+        plotter.add_key_event('Escape', lambda: plotter.close())
         
         # Set initial frame (without rendering yet)
         update_frame(0, force_render=False)

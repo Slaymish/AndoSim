@@ -12,6 +12,18 @@ def _default_stats():
         'peak_contacts': 0,
         'contact_counts': {},
         'peak_contact_counts': {},
+        # Energy tracking
+        'kinetic_energy': 0.0,
+        'elastic_energy': 0.0,
+        'total_energy': 0.0,
+        'initial_energy': 0.0,
+        'energy_drift_percent': 0.0,
+        'energy_drift_absolute': 0.0,
+        'max_velocity': 0.0,
+        'linear_momentum': [0.0, 0.0, 0.0],
+        'angular_momentum': [0.0, 0.0, 0.0],
+        'energy_history': [],  # List of total energy per frame
+        'frame_history': [],    # Corresponding frame numbers
     }
 
 
@@ -95,31 +107,37 @@ class ANDO_OT_bake_simulation(Operator):
         state = abc.State()
         state.initialize(mesh)
         
-        # TODO: Set up constraints from Blender data
+        # Set up constraints from Blender data
         constraints = abc.Constraints()
         
         # Extract pin constraints from vertex group
         pin_group_name = "ando_pins"
         num_pins_added = 0
+        pin_positions_world = []  # Store for later reference
         if pin_group_name in obj.vertex_groups:
             pin_group = obj.vertex_groups[pin_group_name]
             for i, v in enumerate(mesh_data.vertices):
                 try:
                     weight = pin_group.weight(i)
                     if weight > 0.5:  # Threshold for pinning
-                        pin_pos = np.array(v.co, dtype=np.float32)
+                        # Store vertex position in world space
+                        pin_pos_world = obj.matrix_world @ v.co
+                        pin_pos = np.array(pin_pos_world, dtype=np.float32)
                         constraints.add_pin(i, pin_pos)
+                        pin_positions_world.append(pin_pos_world.copy())
                         num_pins_added += 1
                 except RuntimeError:
                     pass  # Vertex not in group
             
             self.report({'INFO'}, f"Added {num_pins_added} pin constraints")
+        else:
+            self.report({'WARNING'}, "No 'ando_pins' vertex group found. Use 'Add Pin Constraint' button to create pins.")
         
         # Add ground plane if enabled
         if props.enable_ground_plane:
             ground_normal = np.array([0.0, 0.0, 1.0], dtype=np.float32)  # Blender Z-up
             constraints.add_wall(ground_normal, props.ground_plane_height, params.wall_gap)
-            self.report({'INFO'}, "Added ground plane constraint")
+            self.report({'INFO'}, f"Added ground plane at Z={props.ground_plane_height}")
         
         # Baking loop
         start_frame = props.cache_start
@@ -129,14 +147,24 @@ class ANDO_OT_bake_simulation(Operator):
         # Create shape keys for animation
         if not obj.data.shape_keys:
             obj.shape_key_add(name='Basis', from_mix=False)
+        else:
+            # Clear existing simulation shape keys (keep Basis)
+            keys_to_remove = [k for k in obj.data.shape_keys.key_blocks if k.name.startswith('frame_')]
+            for key in keys_to_remove:
+                obj.shape_key_remove(key)
+            self.report({'INFO'}, f"Cleared {len(keys_to_remove)} existing frame keys")
+        
         basis = obj.data.shape_keys.key_blocks['Basis']
         
-        self.report({'INFO'}, f"Baking frames {start_frame} to {end_frame} ({steps_per_frame} steps/frame)")
+        self.report({'INFO'}, f"Baking frames {start_frame} to {end_frame} ({steps_per_frame} substeps/frame at {props.dt}ms)")
         
         # Gravity vector (Blender Z-up)
         gravity = np.array([0.0, 0.0, -9.81], dtype=np.float32)
         
-        for frame in range(start_frame, end_frame + 1):
+        # Progress tracking
+        total_frames = end_frame - start_frame + 1
+        
+        for frame_idx, frame in enumerate(range(start_frame, end_frame + 1)):
             # Create shape key for this frame
             shape_key = obj.shape_key_add(name=f'frame_{frame:04d}', from_mix=False)
             
@@ -153,7 +181,7 @@ class ANDO_OT_bake_simulation(Operator):
             for i in range(len(positions)):
                 shape_key.data[i].co = positions[i]
             
-            # Set keyframe
+            # Set keyframe for shape key animation
             shape_key.value = 0.0
             shape_key.keyframe_insert(data_path='value', frame=frame-1)
             shape_key.value = 1.0
@@ -161,11 +189,14 @@ class ANDO_OT_bake_simulation(Operator):
             shape_key.value = 0.0
             shape_key.keyframe_insert(data_path='value', frame=frame+1)
             
-            # Progress report
-            if frame % 10 == 0:
-                self.report({'INFO'}, f"Baked frame {frame}/{end_frame}")
+            # Progress report every 10 frames or at 25%, 50%, 75%, 100%
+            progress_pct = (frame_idx + 1) * 100 // total_frames
+            if frame % 10 == 0 or progress_pct in [25, 50, 75, 100]:
+                self.report({'INFO'}, f"Baking progress: {frame}/{end_frame} ({progress_pct}%)")
         
-        self.report({'INFO'}, f"Baking complete! {end_frame - start_frame + 1} frames")
+        # Final report with statistics
+        num_pins = constraints.num_active_pins()
+        self.report({'INFO'}, f"✓ Baking complete! {total_frames} frames with {num_pins} pins and {num_pins_added} pinned vertices")
         
         return {'FINISHED'}
 
@@ -402,6 +433,39 @@ class ANDO_OT_step_simulation(Operator):
             state.apply_gravity(gravity, params.dt)
             abc.Integrator.step(mesh, state, constraints, params)
         end_time = time.time()
+        
+        # Compute energy diagnostics
+        energy_diag = abc.EnergyTracker.compute(mesh, state, constraints, params)
+        
+        # Get stats reference
+        stats = _sim_state['stats']
+        
+        # Update energy drift tracking
+        if _sim_state['frame'] == 0:
+            # First frame: initialize baseline energy
+            stats['initial_energy'] = energy_diag.total_energy
+        else:
+            # Track drift from initial energy
+            if stats['initial_energy'] > 1e-12:
+                drift_abs = energy_diag.total_energy - stats['initial_energy']
+                drift_pct = (drift_abs / stats['initial_energy']) * 100.0
+                stats['energy_drift_absolute'] = drift_abs
+                stats['energy_drift_percent'] = drift_pct
+        
+        # Update current energy values
+        stats['kinetic_energy'] = energy_diag.kinetic_energy
+        stats['elastic_energy'] = energy_diag.elastic_energy
+        stats['total_energy'] = energy_diag.total_energy
+        stats['max_velocity'] = energy_diag.max_velocity
+        stats['linear_momentum'] = energy_diag.linear_momentum
+        stats['angular_momentum'] = energy_diag.angular_momentum
+        
+        # Add to energy history (limit to last 100 frames to avoid memory growth)
+        stats['energy_history'].append(energy_diag.total_energy)
+        stats['frame_history'].append(_sim_state['frame'])
+        if len(stats['energy_history']) > 100:
+            stats['energy_history'].pop(0)
+            stats['frame_history'].pop(0)
         
         # Update mesh vertices directly (no shape keys)
         positions = state.get_positions()

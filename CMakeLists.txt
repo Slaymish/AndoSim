@@ -48,6 +48,7 @@ set(CORE_SOURCES
     src/core/matrix_assembly.cpp
     src/core/pcg_solver.cpp
     src/core/friction.cpp
+    src/core/energy_tracker.cpp
 )
 
 # Core library headers
@@ -65,6 +66,7 @@ set(CORE_HEADERS
     src/core/matrix_assembly.h
     src/core/pcg_solver.h
     src/core/friction.h
+    src/core/energy_tracker.h
     src/core/types.h
 )
 

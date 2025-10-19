@@ -12,6 +12,7 @@
 #include "stiffness.h"
 #include "integrator.h"
 #include "collision.h"
+#include "energy_tracker.h"
 
 namespace py = pybind11;
 using namespace ando_barrier;
@@ -256,4 +257,47 @@ PYBIND11_MODULE(ando_barrier_core, m) {
             },
             py::arg("mesh"), py::arg("state"),
             "Detect all collision contacts for the current mesh/state");
+    
+    // EnergyDiagnostics struct
+    py::class_<EnergyDiagnostics>(m, "EnergyDiagnostics")
+        .def(py::init<>())
+        .def_readonly("kinetic_energy", &EnergyDiagnostics::kinetic_energy)
+        .def_readonly("elastic_energy", &EnergyDiagnostics::elastic_energy)
+        .def_readonly("barrier_energy", &EnergyDiagnostics::barrier_energy)
+        .def_readonly("total_energy", &EnergyDiagnostics::total_energy)
+        .def_readonly("energy_drift_percent", &EnergyDiagnostics::energy_drift_percent)
+        .def_readonly("energy_drift_absolute", &EnergyDiagnostics::energy_drift_absolute)
+        .def_property_readonly("linear_momentum", [](const EnergyDiagnostics& d) {
+            return std::vector<Real>{d.linear_momentum[0], d.linear_momentum[1], d.linear_momentum[2]};
+        })
+        .def_property_readonly("angular_momentum", [](const EnergyDiagnostics& d) {
+            return std::vector<Real>{d.angular_momentum[0], d.angular_momentum[1], d.angular_momentum[2]};
+        })
+        .def_readonly("max_velocity", &EnergyDiagnostics::max_velocity)
+        .def_readonly("num_contacts", &EnergyDiagnostics::num_contacts)
+        .def_readonly("num_pins", &EnergyDiagnostics::num_pins)
+        .def("update_drift", &EnergyDiagnostics::update_drift);
+    
+    // EnergyTracker class
+    py::class_<EnergyTracker>(m, "EnergyTracker")
+        .def(py::init<>())
+        .def_static("compute", &EnergyTracker::compute,
+            py::arg("mesh"), py::arg("state"), py::arg("constraints"), py::arg("params"),
+            "Compute comprehensive energy diagnostics")
+        .def_static("compute_kinetic_energy", &EnergyTracker::compute_kinetic_energy,
+            "Compute kinetic energy")
+        .def_static("compute_linear_momentum", 
+            [](const State& state) {
+                Vec3 mom = EnergyTracker::compute_linear_momentum(state);
+                return std::vector<Real>{mom[0], mom[1], mom[2]};
+            },
+            "Compute linear momentum")
+        .def_static("compute_angular_momentum",
+            [](const State& state) {
+                Vec3 ang = EnergyTracker::compute_angular_momentum(state);
+                return std::vector<Real>{ang[0], ang[1], ang[2]};
+            },
+            "Compute angular momentum")
+        .def_static("compute_max_velocity", &EnergyTracker::compute_max_velocity,
+            "Compute maximum velocity");
 }

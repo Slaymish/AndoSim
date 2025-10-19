@@ -193,6 +193,14 @@ class ANDO_PT_realtime_panel(Panel):
                 row = layout.row(align=True)
                 row.operator("ando.step_simulation", text="Step", icon='FRAME_NEXT')
                 row.operator("ando.reset_realtime_simulation", text="Reset", icon='FILE_REFRESH')
+                
+                # Hot-reload parameter update
+                layout.separator()
+                box = layout.box()
+                box.label(text="Parameter Control", icon='SETTINGS')
+                box.operator("ando.update_parameters", text="Apply Changes", icon='FILE_REFRESH')
+                box.label(text="Update materials/settings", icon='INFO')
+                box.label(text="without restarting sim")
             else:
                 layout.label(text="Not initialized", icon='INFO')
                 layout.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
@@ -233,7 +241,7 @@ class ANDO_PT_debug_panel(Panel):
             # Statistics
             if sim_state['initialized']:
                 box = layout.box()
-                box.label(text="Statistics", icon='INFO')
+                box.label(text="Performance", icon='TIME')
                 stats = sim_state['stats']
                 
                 col = box.column(align=True)
@@ -255,6 +263,51 @@ class ANDO_PT_debug_panel(Panel):
                         current = counts.get(ctype, 0)
                         peak = stats.get('peak_contact_counts', {}).get(ctype, current)
                         box.label(text=f"{ctype}: {current} (peak {peak})")
+                
+                # Energy diagnostics
+                box = layout.box()
+                box.label(text="Energy & Conservation", icon='LIGHT_SUN')
+                
+                # Current energy values
+                col = box.column(align=True)
+                total_e = stats.get('total_energy', 0.0)
+                kinetic_e = stats.get('kinetic_energy', 0.0)
+                elastic_e = stats.get('elastic_energy', 0.0)
+                
+                col.label(text=f"Total: {total_e:.3e} J")
+                col.label(text=f"Kinetic: {kinetic_e:.3e} J")
+                col.label(text=f"Elastic: {elastic_e:.3e} J")
+                
+                # Energy drift warning
+                drift_pct = stats.get('energy_drift_percent', 0.0)
+                drift_abs = stats.get('energy_drift_absolute', 0.0)
+                
+                box.separator()
+                row = box.row()
+                if abs(drift_pct) > 10.0:
+                    row.alert = True
+                    row.label(text=f"Drift: {drift_pct:+.2f}% ⚠", icon='ERROR')
+                elif abs(drift_pct) > 5.0:
+                    row.label(text=f"Drift: {drift_pct:+.2f}% ⚡", icon='INFO')
+                else:
+                    row.label(text=f"Drift: {drift_pct:+.2f}% ✓")
+                
+                # Momentum conservation
+                box.separator()
+                lin_mom = stats.get('linear_momentum', [0, 0, 0])
+                ang_mom = stats.get('angular_momentum', [0, 0, 0])
+                lin_mag = (lin_mom[0]**2 + lin_mom[1]**2 + lin_mom[2]**2)**0.5
+                ang_mag = (ang_mom[0]**2 + ang_mom[1]**2 + ang_mom[2]**2)**0.5
+                
+                col = box.column(align=True)
+                col.label(text=f"Lin momentum: {lin_mag:.3e}")
+                col.label(text=f"Ang momentum: {ang_mag:.3e}")
+                col.label(text=f"Max velocity: {stats.get('max_velocity', 0.0):.2f} m/s")
+                
+                # Energy history visualization hint
+                if len(stats.get('energy_history', [])) > 2:
+                    box.separator()
+                    box.label(text=f"History: {len(stats['energy_history'])} frames tracked")
                     
         except ImportError:
             layout.label(text="Core module not loaded", icon='ERROR')
