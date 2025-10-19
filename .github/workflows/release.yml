@@ -20,7 +20,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Ando Barrier ${{ github.ref_name }}
-          draft: false
+          draft: true
           prerelease: false
           body: |
             ## Ando Barrier Physics Simulator - ${{ github.ref_name }}
@@ -39,6 +39,10 @@ jobs:
             
             ### What's New
             See CHANGELOG.md for detailed changes.
+            
+            ---
+            
+            **Note**: This is an automated draft release. Please verify all platform builds before publishing.
 
   build-and-upload:
     name: Build ${{ matrix.os }}
