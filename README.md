@@ -5,7 +5,7 @@ Blender add-on implementing "A Cubic Barrier with Elasticity-Inclusive Dynamic S
 ## Quick Start
 
 **For Blender Users:**
-- See [BLENDER_GUIDE.md](BLENDER_GUIDE.md) for installation, usage, and tutorials
+- See [BLENDER_QUICK_START.md](BLENDER_QUICK_START.md) for installation, usage, and tutorials
 
 **For Developers:**
 - Build: `./build.sh` (requires CMake, Eigen3, pybind11)
@@ -13,8 +13,54 @@ Blender add-on implementing "A Cubic Barrier with Elasticity-Inclusive Dynamic S
 - Demos: `./build/demos/demo_cloth_drape` (standalone C++ demos)
 - Visualize: `python3 demos/view_sequence.py output/cloth_drape`
 
-**Project Status:**
-- Core physics engine: ✓ Complete (Tasks 0-9)
-- Standalone demos: ✓ Working (90-170 FPS for 200-400 vertex meshes)
-- Blender integration: ✓ Mostly Complete (baking functional, overlays pending)
-- See [PROJECT_STATUS.md](PROJECT_STATUS.md) and [ROADMAP.md](ROADMAP.md) for details
+
+## Build Steps
+
+### 1. Install Dependencies
+
+- Install CMake from https://cmake.org/download/
+- Install Eigen3 from https://eigen.tuxfamily.org/
+- Install pybind11 from pip
+
+### 2. Build the C++ Core Module
+
+From the project root directory:
+
+```bash
+# Create build directory
+mkdir build
+cd build
+
+# Configure with CMake
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# Build
+cmake --build . --config Release
+
+# Install to blender_addon directory
+cmake --install .
+```
+
+### 4. Install Blender Add-on
+
+Once built, the `ando_barrier_core` module will be in the `blender_addon/` directory.
+
+```bash
+cp -r blender_addon ~/.config/blender/3.6/scripts/addons/ando_barrier
+```
+
+### 5. Enable Add-on in Blender
+
+1. Open Blender
+2. Go to Edit → Preferences → Add-ons
+3. Search for "Ando Barrier Physics"
+4. Enable the checkbox
+5. The panel will appear in the 3D View sidebar (press N) under "Ando Physics" tab
+
+
+## Next Steps
+
+After successful installation:
+1. See `demos/` for example scenes (standalone and Blender)
+2. Read `docs/BLENDER_QUICK_START.md` for Blender usage guide
+3. Check the paper for mathematical details
