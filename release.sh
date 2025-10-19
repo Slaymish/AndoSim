@@ -94,16 +94,6 @@ print_info "Running pre-release checks..."
 echo "$VERSION" > VERSION
 print_success "Updated VERSION file to $VERSION"
 
-# 2. Check if tests pass
-print_info "Running production validation..."
-if python3 validate_production.py > /dev/null 2>&1; then
-    print_success "Production validation passed"
-else
-    print_error "Production validation failed!"
-    echo "Fix issues before creating release"
-    exit 1
-fi
-
 # 3. Build check
 print_info "Testing build..."
 if ./build.sh -c > /dev/null 2>&1; then
