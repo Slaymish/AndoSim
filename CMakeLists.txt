@@ -13,9 +13,13 @@ option(BUILD_TESTS "Build unit tests" ON)
 
 # Compiler flags
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-    if(USE_FAST_MATH)
-        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math")
+    if(MSVC)
+        set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG")
+    else()
+        set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+        if(USE_FAST_MATH)
+            set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math")
+        endif()
     endif()
 endif()
 
@@ -25,7 +29,20 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Find packages
-find_package(Eigen3 REQUIRED)
+# Eigen3 with fallback for Windows manual install
+find_package(Eigen3 QUIET)
+if(NOT Eigen3_FOUND)
+    # Try to find Eigen in common locations
+    if(DEFINED ENV{EIGEN3_INCLUDE_DIR})
+        set(EIGEN3_INCLUDE_DIR $ENV{EIGEN3_INCLUDE_DIR})
+        message(STATUS "Using Eigen from EIGEN3_INCLUDE_DIR: ${EIGEN3_INCLUDE_DIR}")
+    elseif(EXISTS "C:/eigen-3.4.0")
+        set(EIGEN3_INCLUDE_DIR "C:/eigen-3.4.0")
+        message(STATUS "Using Eigen from C:/eigen-3.4.0")
+    else()
+        message(FATAL_ERROR "Eigen3 not found. Please install Eigen3 or set EIGEN3_INCLUDE_DIR environment variable.")
+    endif()
+endif()
 find_package(pybind11 REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 

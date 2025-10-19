@@ -1,0 +1,136 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Ando Barrier ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          body: |
+            ## Ando Barrier Physics Simulator - ${{ github.ref_name }}
+            
+            ### Installation
+            Download the appropriate package for your platform and install:
+            1. Download the `.zip` file for your OS
+            2. In Blender: Edit → Preferences → Add-ons → Install
+            3. Select the downloaded file
+            4. Enable "Ando Barrier Physics"
+            
+            ### Platform Support
+            - **Linux**: x86_64, Python 3.11+
+            - **macOS**: Universal (Intel + Apple Silicon), Python 3.11+
+            - **Windows**: x64, Python 3.11+
+            
+            ### What's New
+            See CHANGELOG.md for detailed changes.
+
+  build-and-upload:
+    name: Build ${{ matrix.os }}
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.11']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential libeigen3-dev python3-dev
+        pip install numpy pybind11
+        
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake eigen pybind11
+        pip install numpy
+        
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+        pip install numpy pybind11
+        Invoke-WebRequest -Uri "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip" -OutFile "eigen.zip"
+        Expand-Archive -Path eigen.zip -DestinationPath C:\
+        echo "EIGEN3_INCLUDE_DIR=C:\eigen-3.4.0" >> $env:GITHUB_ENV
+        
+    - name: Build (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        cmake --build . --config Release
+        
+    - name: Build (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR ..
+        cmake --build . --config Release
+        
+    - name: Package addon
+      shell: bash
+      run: |
+        VERSION=${{ github.ref_name }}
+        mkdir -p addon_package/ando_barrier
+        
+        # Copy Python files
+        cp blender_addon/*.py addon_package/ando_barrier/
+        
+        # Copy built module
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          cp build/Release/ando_barrier_core*.pyd addon_package/ando_barrier/
+          PACKAGE_NAME="ando_barrier_${VERSION}_windows_x64.zip"
+          cd addon_package
+          7z a -tzip ../${PACKAGE_NAME} ando_barrier/
+        else
+          cp build/ando_barrier_core*.so addon_package/ando_barrier/
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            PACKAGE_NAME="ando_barrier_${VERSION}_linux_x64.zip"
+          else
+            PACKAGE_NAME="ando_barrier_${VERSION}_macos_universal.zip"
+          fi
+          cd addon_package
+          zip -r ../${PACKAGE_NAME} ando_barrier/
+        fi
+        
+        cd ..
+        echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+        
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ env.PACKAGE_NAME }}
+        asset_name: ${{ env.PACKAGE_NAME }}
+        asset_content_type: application/zip
