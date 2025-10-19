@@ -81,6 +81,7 @@ jobs:
     - name: Run tests (Windows)
       if: runner.os == 'Windows'
       run: |
+        $env:PYTHONPATH = "build/Release;build"
         python tests/test_adaptive_timestep.py
         python tests/test_heatmap_colors.py
         

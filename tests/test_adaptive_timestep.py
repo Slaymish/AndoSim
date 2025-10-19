@@ -49,7 +49,7 @@ def test_cfl_timestep_basic():
     print(f"  expected = {expected:.6f} s")
     
     assert abs(dt_cfl - expected) < 1e-6, f"CFL timestep mismatch: {dt_cfl} vs {expected}"
-    print("  ✓ Basic CFL computation correct")
+    print("  [PASS] Basic CFL computation correct")
     
     # Test case 2: High velocity (collision)
     max_vel = 10.0
@@ -60,7 +60,7 @@ def test_cfl_timestep_basic():
     print(f"    max_velocity = {max_vel} m/s")
     print(f"    dt_cfl = {dt_cfl:.6f} s (should be smaller)")
     assert dt_cfl < 0.001, "High velocity should give smaller dt"
-    print("  ✓ High velocity handling correct")
+    print("  [PASS] High velocity handling correct")
     
     # Test case 3: Small velocity (settling)
     max_vel = 0.01
@@ -70,9 +70,9 @@ def test_cfl_timestep_basic():
     print(f"    max_velocity = {max_vel} m/s")
     print(f"    dt_cfl = {dt_cfl:.6f} s (should be larger)")
     assert dt_cfl > 0.1, "Low velocity should give larger dt"
-    print("  ✓ Low velocity handling correct")
+    print("  [PASS] Low velocity handling correct")
     
-    print("\n✓ All basic CFL tests passed!")
+    print("\n[PASS] All basic CFL tests passed!")
 
 def test_cfl_edge_cases():
     """Test CFL computation edge cases"""
@@ -91,7 +91,7 @@ def test_cfl_edge_cases():
     print(f"    dt_cfl = {dt_cfl:.6f} s")
     assert dt_cfl > 0.0, "dt should be positive even for tiny velocity"
     assert np.isfinite(dt_cfl), "dt should be finite"
-    print("  ✓ Near-zero velocity handled")
+    print("  [PASS] Near-zero velocity handled")
     
     # Test case 2: Exact zero velocity (should trigger static detection)
     max_vel = 0.0
@@ -100,7 +100,7 @@ def test_cfl_edge_cases():
     print(f"\n  Zero velocity: {max_vel} m/s")
     print(f"    dt_cfl = {dt_cfl:.6f} s (should be large for static case)")
     assert np.isfinite(dt_cfl), "dt should be finite for zero velocity"
-    print("  ✓ Zero velocity handled (static detection)")
+    print("  [PASS] Zero velocity handled (static detection)")
     
     # Test case 3: Very small edge length
     max_vel = 1.0
@@ -112,7 +112,7 @@ def test_cfl_edge_cases():
     print(f"    dt_cfl = {dt_cfl:.9f} s")
     print(f"    expected = {expected:.9f} s")
     assert abs(dt_cfl - expected) < 1e-9, "Small edge should give tiny dt"
-    print("  ✓ Tiny edge length handled")
+    print("  [PASS] Tiny edge length handled")
     
     # Test case 4: Different safety factors
     max_vel = 1.0
@@ -124,9 +124,9 @@ def test_cfl_edge_cases():
         print(f"\n  Safety factor {safety}:")
         print(f"    dt_cfl = {dt_cfl:.6f} s")
         assert abs(dt_cfl - expected) < 1e-6, f"Safety factor {safety} incorrect"
-        print(f"    ✓ Safety factor {safety} correct")
+        print(f"    [PASS] Safety factor {safety} correct")
     
-    print("\n✓ All edge case tests passed!")
+    print("\n[PASS] All edge case tests passed!")
 
 def test_min_edge_length():
     """Test minimum edge length computation on various meshes"""
@@ -155,7 +155,7 @@ def test_min_edge_length():
     
     # All edges should be 1.0 or sqrt(2)
     assert 0.99 < min_edge <= 1.01, f"Min edge should be ~1.0, got {min_edge}"
-    print("  ✓ Triangle min edge correct")
+    print("  [PASS] Triangle min edge correct")
     
     # Test case 2: Stretched quad (0.1 x 1.0)
     vertices = [
@@ -173,7 +173,7 @@ def test_min_edge_length():
     print(f"\n  Stretched quad (0.1 x 1.0):")
     print(f"    Min edge length: {min_edge:.6f} m")
     assert 0.09 < min_edge < 0.11, f"Min edge should be ~0.1, got {min_edge}"
-    print("  ✓ Stretched quad min edge correct")
+    print("  [PASS] Stretched quad min edge correct")
     
     # Test case 3: Mixed edge lengths
     vertices = [
@@ -191,9 +191,9 @@ def test_min_edge_length():
     print(f"\n  Mixed edge lengths:")
     print(f"    Min edge length: {min_edge:.6f} m")
     assert 0.009 < min_edge < 0.011, f"Min edge should be ~0.01, got {min_edge}"
-    print("  ✓ Mixed edge lengths min edge correct")
+    print("  [PASS] Mixed edge lengths min edge correct")
     
-    print("\n✓ All min edge length tests passed!")
+    print("\n[PASS] All min edge length tests passed!")
 
 def test_max_velocity():
     """Test maximum velocity computation"""
@@ -211,7 +211,7 @@ def test_max_velocity():
     print(f"  Uniform velocity (1, 0, 0):")
     print(f"    max_velocity = {max_vel:.6f} m/s")
     assert abs(max_vel - 1.0) < 1e-6, "Max velocity should be 1.0"
-    print("  ✓ Uniform velocity correct")
+    print("  [PASS] Uniform velocity correct")
     
     # Test case 2: Mixed velocities
     velocities = np.array([0.5, 0.0, 0.0,
@@ -223,7 +223,7 @@ def test_max_velocity():
     print(f"\n  Mixed velocities:")
     print(f"    max_velocity = {max_vel:.6f} m/s")
     assert abs(max_vel - 2.0) < 1e-6, "Max velocity should be 2.0"
-    print("  ✓ Mixed velocities correct")
+    print("  [PASS] Mixed velocities correct")
     
     # Test case 3: 3D velocity (sqrt(3))
     velocities = np.array([1.0, 1.0, 1.0], dtype=np.float32)
@@ -235,7 +235,7 @@ def test_max_velocity():
     print(f"    max_velocity = {max_vel:.6f} m/s")
     print(f"    expected = {expected:.6f} m/s")
     assert abs(max_vel - expected) < 1e-5, f"Max velocity should be sqrt(3)"
-    print("  ✓ 3D velocity magnitude correct")
+    print("  [PASS] 3D velocity magnitude correct")
     
     # Test case 4: Zero velocity
     velocities = np.array([0.0, 0.0, 0.0,
@@ -246,9 +246,9 @@ def test_max_velocity():
     print(f"\n  Zero velocity:")
     print(f"    max_velocity = {max_vel:.6f} m/s")
     assert max_vel == 0.0, "Max velocity should be 0.0"
-    print("  ✓ Zero velocity correct")
+    print("  [PASS] Zero velocity correct")
     
-    print("\n✓ All max velocity tests passed!")
+    print("\n[PASS] All max velocity tests passed!")
 
 def test_compute_next_dt():
     """Test complete next_dt computation with clamping and smoothing"""
@@ -288,7 +288,7 @@ def test_compute_next_dt():
     print(f"    next_dt = {next_dt:.6f} s")
     assert dt_min <= next_dt <= dt_max, "dt should be within bounds"
     assert next_dt < current_dt, "dt should decrease for high velocity"
-    print("  ✓ Normal velocity case correct")
+    print("  [PASS] Normal velocity case correct")
     
     # Test case 2: Low velocity, dt should increase (but smoothed)
     velocities = np.array([0.01, 0.0, 0.0,
@@ -308,7 +308,7 @@ def test_compute_next_dt():
     # Should increase but limited by max_increase_ratio (1.5×)
     # Use small epsilon for floating point comparison
     assert next_dt <= current_dt * 1.5 + 1e-9, "dt increase should be smoothed (max 1.5×)"
-    print("  ✓ Low velocity smoothing correct")
+    print("  [PASS] Low velocity smoothing correct")
     
     # Test case 3: Zero velocity, dt should go to dt_max
     velocities = np.array([0.0, 0.0, 0.0,
@@ -326,7 +326,7 @@ def test_compute_next_dt():
     print(f"    next_dt = {next_dt:.6f} s")
     # Use epsilon for floating point comparison
     assert abs(next_dt - dt_max) < 1e-6, f"dt should go to dt_max for static cloth, got {next_dt}"
-    print("  ✓ Zero velocity (static) handling correct")
+    print("  [PASS] Zero velocity (static) handling correct")
     
     # Test case 4: dt clamping at dt_min
     velocities = np.array([100.0, 0.0, 0.0,  # Very high velocity
@@ -346,9 +346,9 @@ def test_compute_next_dt():
     print(f"    next_dt = {next_dt:.6f} s")
     # Use epsilon for floating point comparison (allow small underflow)
     assert next_dt >= dt_min - 1e-6, f"dt should not go below dt_min, got {next_dt}"
-    print("  ✓ dt_min clamping correct")
+    print("  [PASS] dt_min clamping correct")
     
-    print("\n✓ All next_dt computation tests passed!")
+    print("\n[PASS] All next_dt computation tests passed!")
 
 def test_numerical_stability():
     """Test numerical stability with extreme values"""
@@ -367,7 +367,7 @@ def test_numerical_stability():
     print(f"    dt_cfl = {dt_cfl:.9f} s")
     assert np.isfinite(dt_cfl), "dt should be finite for large velocity"
     assert dt_cfl > 0.0, "dt should be positive"
-    print("  ✓ Large velocity stable")
+    print("  [PASS] Large velocity stable")
     
     # Test case 2: Very large edge
     max_vel = 1.0
@@ -379,7 +379,7 @@ def test_numerical_stability():
     print(f"    dt_cfl = {dt_cfl:.3f} s")
     assert np.isfinite(dt_cfl), "dt should be finite for large edge"
     assert dt_cfl > 0.0, "dt should be positive"
-    print("  ✓ Large edge length stable")
+    print("  [PASS] Large edge length stable")
     
     # Test case 3: Very small safety factor
     max_vel = 1.0
@@ -392,7 +392,7 @@ def test_numerical_stability():
     print(f"\n  Tiny safety factor: {safety:.1e}")
     print(f"    dt_cfl = {dt_cfl:.9f} s")
     assert abs(dt_cfl - expected) < 1e-12, "Tiny safety factor should be accurate"
-    print("  ✓ Tiny safety factor stable")
+    print("  [PASS] Tiny safety factor stable")
     
     # Test case 4: Verify no overflow/underflow in velocity computation
     velocities = np.array([1e10, 1e10, 1e10,  # Huge velocity
@@ -404,9 +404,9 @@ def test_numerical_stability():
     print(f"    max_velocity = {max_vel:.3e} m/s")
     assert np.isfinite(max_vel), "Max velocity should be finite"
     assert max_vel > 1e9, "Should detect huge velocity"
-    print("  ✓ Extreme velocity computation stable")
+    print("  [PASS] Extreme velocity computation stable")
     
-    print("\n✓ All numerical stability tests passed!")
+    print("\n[PASS] All numerical stability tests passed!")
 
 def run_all_tests():
     """Run all adaptive timestep unit tests"""
@@ -431,10 +431,10 @@ def run_all_tests():
             test_func()
             passed += 1
         except AssertionError as e:
-            print(f"\n✗ Test '{name}' FAILED: {e}")
+            print(f"\n[FAIL] Test '{name}' FAILED: {e}")
             failed += 1
         except Exception as e:
-            print(f"\n✗ Test '{name}' ERROR: {e}")
+            print(f"\n[FAIL] Test '{name}' ERROR: {e}")
             failed += 1
     
     print("\n" + "="*70)
@@ -444,7 +444,7 @@ def run_all_tests():
         print("="*70)
         return 1
     else:
-        print("         All tests passed! ✓")
+        print("         All tests passed! [PASS]")
         print("="*70)
         return 0
 

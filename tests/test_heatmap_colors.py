@@ -54,10 +54,10 @@ def test_gap_to_color():
         (0.002, 0.001, "Far (green, clamped)"),
     ]
     
-    print("\nGap distance → Color mapping:")
+    print("\nGap distance -> Color mapping:")
     for gap, gap_max, description in test_cases:
         color = gap_to_color(gap, gap_max)
-        print(f"  Gap: {gap*1000:.2f}mm → RGB: ({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f}) - {description}")
+        print(f"  Gap: {gap*1000:.2f}mm -> RGB: ({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f}) - {description}")
         
         # Validate color properties
         if gap == 0.0:
@@ -65,7 +65,7 @@ def test_gap_to_color():
         elif gap >= gap_max:
             assert color[0] == 0.0 and color[1] == 1.0, "Far gap should be green"
     
-    print("✓ Gap color mapping tests passed!")
+    print("[PASS] Gap color mapping tests passed!")
 
 def test_strain_to_color():
     """Test strain magnitude to color mapping"""
@@ -101,10 +101,10 @@ def test_strain_to_color():
         (0.10, 0.05, "Beyond limit (red, clamped)"),
     ]
     
-    print("\nStrain magnitude → Color mapping:")
+    print("\nStrain magnitude -> Color mapping:")
     for strain, strain_limit, description in test_cases:
         color = strain_to_color(strain, strain_limit)
-        print(f"  Strain: {strain*100:.1f}% → RGB: ({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f}) - {description}")
+        print(f"  Strain: {strain*100:.1f}% -> RGB: ({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f}) - {description}")
         
         # Validate color properties
         if strain == 0.0:
@@ -112,7 +112,7 @@ def test_strain_to_color():
         elif strain >= strain_limit:
             assert color[0] == 1.0 and abs(color[1]) < 0.01, f"Max strain should be red, got RGB({color[0]:.2f}, {color[1]:.2f}, {color[2]:.2f})"
     
-    print("✓ Strain color mapping tests passed!")
+    print("[PASS] Strain color mapping tests passed!")
 
 def test_color_continuity():
     """Test that color transitions are smooth"""
@@ -146,7 +146,7 @@ def test_color_continuity():
     assert diff < 0.1, f"Color discontinuity detected: diff={diff}"
     
     print(f"  Transition continuity: Δcolor = {diff:.4f}")
-    print("✓ Color continuity test passed!")
+    print("[PASS] Color continuity test passed!")
 
 if __name__ == '__main__':
     print("="*60)
@@ -159,12 +159,12 @@ if __name__ == '__main__':
         test_color_continuity()
         
         print("\n" + "="*60)
-        print("✓ All tests passed!")
+        print("[PASS] All tests passed!")
         print("="*60)
         sys.exit(0)
         
     except Exception as e:
-        print(f"\n✗ Test failed: {e}")
+        print(f"\n[FAIL] Test failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
