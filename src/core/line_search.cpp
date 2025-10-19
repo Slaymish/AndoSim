@@ -62,7 +62,6 @@ bool LineSearch::is_feasible(const State& state,
     state.flatten_positions(x_old);
     const int n = static_cast<int>(x_old.size() / 3);
     
-    // Helper to get Vec3 from VecX at vertex i
     auto get_pos = [](const VecX& x, int i) -> Vec3 {
         return Vec3(x[3*i], x[3*i+1], x[3*i+2]);
     };
@@ -165,20 +164,18 @@ Real LineSearch::ccd_point_triangle(const Vec3& p0, const Vec3& p1,
                                    const Vec3& a0, const Vec3& a1,
                                    const Vec3& b0, const Vec3& b1,
                                    const Vec3& c0, const Vec3& c1) {
-    // Conservative CCD using coplanar test
-    // We check if the point trajectory crosses the triangle plane
-    // This is a simplified conservative approach
+    // Conservative CCD using temporal sampling
+    // Check if point trajectory crosses the triangle plane
     
-    // Relative motion
     Vec3 dp = p1 - p0;
     Vec3 da = a1 - a0;
     Vec3 db = b1 - b0;
     Vec3 dc = c1 - c0;
     
-    // If all motion is small, no collision
+    // Early exit if no motion
     if (dp.squaredNorm() < 1e-12 && da.squaredNorm() < 1e-12 &&
         db.squaredNorm() < 1e-12 && dc.squaredNorm() < 1e-12) {
-        return 1.0;  // No motion
+        return 1.0;
     }
     
     // Sample at multiple time points for conservative detection

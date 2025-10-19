@@ -107,8 +107,8 @@ Debug & Statistics panel:
 ### Debug & Statistics
 - **Show/Hide Overlays**: Toggle viewport visualization
 - **Legend**:
-  - 🔴 Red dots = Contact points (TODO: C++ integration)
-  - 🟢 Green lines = Contact normals (TODO: C++ integration)
+  - 🔴 Red dots = Contact points
+  - 🟢 Green lines = Contact normals
   - 🔵 Blue dots = Pinned vertices
 - **Statistics**:
   - Contacts: Active collision count

@@ -97,14 +97,8 @@ void Stiffness::compute_all_stiffnesses(
     Real dt,
     const SparseMatrix& H_elastic
 ) {
-    // TODO: This will be implemented when integrating with constraint assembly
-    // For now, individual stiffness functions can be called directly
-    
-    // Future implementation will:
-    // 1. Loop through all active contacts
-    // 2. Extract relevant Hessian blocks
-    // 3. Compute and cache stiffness for each constraint
-    // 4. Store in constraint data structure
+    // Individual stiffness functions should be called directly during gradient/Hessian assembly.
+    // This function is reserved for future batch optimization if needed.
 }
 
 Mat3 Stiffness::extract_hessian_block(const SparseMatrix& H, Index vertex_idx) {

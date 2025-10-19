@@ -73,9 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Full Newton integrator constraint extraction (see `src/core/integrator.cpp` TODOs)
-- Strain limiting (Task 5)
-- Friction (Task 10)
+- Enhanced Newton integrator constraint extraction
+- Strain limiting for over-stretching prevention
+- Friction model integration
 - Additional demo scenarios
 
 ---

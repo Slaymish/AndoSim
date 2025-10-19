@@ -55,14 +55,8 @@ EnergyDiagnostics EnergyTracker::compute(
     // Elastic energy
     diag.elastic_energy = Elasticity::compute_energy(mesh, state);
     
-    // Barrier energy (approximate - would need to recompute all active barriers)
-    // For now, set to 0 as it's typically small compared to elastic/kinetic
+    // Barrier energy not currently tracked (typically small compared to elastic/kinetic)
     diag.barrier_energy = 0.0;
-    
-    // TODO: If we want accurate barrier energy, we'd need to:
-    // 1. Detect all active contacts
-    // 2. Compute barrier energy for each
-    // This is expensive, so we leave it as future enhancement
     
     // Total energy
     diag.total_energy = diag.kinetic_energy + diag.elastic_energy + diag.barrier_energy;

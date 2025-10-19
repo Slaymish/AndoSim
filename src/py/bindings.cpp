@@ -217,7 +217,7 @@ PYBIND11_MODULE(ando_barrier_core, m) {
         .def_static("compute_hessian", &Elasticity::compute_hessian,
              "Compute elastic Hessian (explicit assembly)");
     
-    // Barrier energy functions (module-level functions)
+    // Barrier energy functions
     m.def("barrier_energy", &Barrier::compute_energy, 
           "Compute cubic barrier energy V_weak(g, g_max, k)");
     m.def("barrier_gradient", &Barrier::compute_gradient,
@@ -225,7 +225,7 @@ PYBIND11_MODULE(ando_barrier_core, m) {
     m.def("barrier_hessian", &Barrier::compute_hessian,
           "Compute cubic barrier Hessian w.r.t. g");
     
-    // Helper functions for creating meshes from Blender
+    // Mesh creation utilities
     m.def("create_mesh_from_blender", 
         [](py::array_t<Real> vertices, py::array_t<int32_t> triangles, const Material& mat) {
             auto verts_arr = vertices.unchecked<2>();

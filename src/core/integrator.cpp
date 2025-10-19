@@ -20,7 +20,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     VecX x_old;
     state.flatten_positions(x_old);
     
-    // 1. Predict positions: x̂ = x + dt*v (simple forward Euler prediction)
+    // 1. Predict positions: x̂ = x + dt*v (forward Euler prediction)
     VecX x_target;
     state.flatten_positions(x_target);
     
@@ -37,13 +37,12 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     std::vector<ContactPair> contacts;
     detect_collisions(mesh, state, contacts);
     
-    // 3. β accumulation loop
+    // 3. β accumulation loop (Section 3.6)
     Real beta = 0.0;
     int beta_iter = 0;
-    const int max_beta_iters = 20;  // Maximum β iterations
+    const int max_beta_iters = 20;
     
     while (beta < params.beta_max && beta_iter < max_beta_iters) {
-        // Inner Newton step
         Real alpha = inner_newton_step(mesh, state, x_target, contacts,
                                       constraints, params, beta);
         
@@ -52,24 +51,22 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
         
         beta_iter++;
         
-        // If step was rejected (α ≈ 0), break
         if (alpha < 1e-6) {
             std::cerr << "Line search failed, stopping β accumulation" << std::endl;
             break;
         }
     }
     
-    // 4. Error reduction pass: one more Newton step with full β
+    // 4. Error reduction pass with full β
     if (beta > 1e-6) {
         inner_newton_step(mesh, state, x_target, contacts, constraints, params, beta);
     }
     
     // 5. Update velocities: v = (x_new - x_old) / (β Δt) (Section 3.6)
-    // Note: x_old cached before integration, x_new is current state after Newton steps
     if (beta > 1e-6) {
         VecX x_new;
         state.flatten_positions(x_new);
-        VecX dx = x_new - x_old;  // Actual displacement from initial position
+        VecX dx = x_new - x_old;
         
         Real beta_dt = beta * dt;
         for (int i = 0; i < n; ++i) {
@@ -93,9 +90,8 @@ Real Integrator::inner_newton_step(
     
     const int n = static_cast<int>(state.num_vertices());
     
-    // Newton iterations
     for (int newton_iter = 0; newton_iter < params.max_newton_steps; ++newton_iter) {
-        // Compute gradient (RHS): g = ∇E
+        // Compute gradient: g = ∇E
         VecX gradient = VecX::Zero(3 * n);
         compute_gradient(mesh, state, x_target, contacts, constraints, params, beta, gradient);
         
@@ -104,10 +100,10 @@ Real Integrator::inner_newton_step(
         state.flatten_positions(x_current);
         Real grad_norm = gradient.lpNorm<Eigen::Infinity>();
         if (grad_norm < params.pcg_tol) {
-            return 1.0;  // Converged, full step accepted
+            return 1.0;
         }
         
-        // Assemble system matrix (Hessian): H = ∇²E
+        // Assemble Hessian: H = ∇²E
         SparseMatrix hessian;
         assemble_system_matrix(mesh, state, contacts, constraints, params, beta, hessian);
         
@@ -121,7 +117,7 @@ Real Integrator::inner_newton_step(
             std::cerr << "PCG did not converge in Newton iteration " << newton_iter << std::endl;
         }
         
-        // Extract active pins from constraints
+        // Extract active pins for line search
         std::vector<Pin> pins_for_search;
         for (const auto& pin : constraints.pins) {
             if (pin.active) {
@@ -129,40 +125,38 @@ Real Integrator::inner_newton_step(
             }
         }
         
-        // Extract wall from constraints (use first active wall)
+        // Extract first active wall for line search
         Vec3 wall_normal(0, 0, 0);
         Real wall_offset = 0.0;
         for (const auto& wall : constraints.walls) {
             if (wall.active) {
                 wall_normal = wall.normal;
                 wall_offset = wall.offset;
-                break;  // Use first active wall
+                break;
             }
         }
         
-        // Line search for feasible α
+        // Line search with extended direction (Section 3.5)
         Real alpha = LineSearch::search(
             mesh, state, direction, contacts,
             pins_for_search, wall_normal, wall_offset,
-            1.25  // Extended direction
+            1.25
         );
         
         if (alpha < 1e-8) {
-            return 0.0;  // Line search failed
+            return 0.0;
         }
         
         // Update positions: x ← x + α * extension * d
         VecX x_new = x_current + alpha * 1.25 * direction;
         state.unflatten_positions(x_new);
         
-        // If we took a full step, we're done
         if (alpha > 0.99) {
             return 1.0;
         }
     }
     
-    // Max Newton iterations reached
-    return 0.5;  // Partial success
+    return 0.5;
 }
 
 std::vector<ContactPair> Integrator::compute_contacts(const Mesh& mesh,
@@ -469,11 +463,9 @@ void Integrator::assemble_system_matrix(
     // Build sparse matrix from triplets
     hessian.setFromTriplets(triplets.begin(), triplets.end());
     
-    // Make sure matrix is symmetric (average with transpose)
+    // Enforce symmetry
     SparseMatrix hessian_t = hessian.transpose();
     hessian = (hessian + hessian_t) * 0.5;
-    
-    // TODO: Add small regularization if needed for SPD enforcement
 }
 
 void Integrator::detect_collisions(const Mesh& mesh, const State& state,

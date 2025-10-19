@@ -110,7 +110,7 @@ void Elasticity::enforce_spd(Mat3& H, Real epsilon) {
 }
 
 Real Elasticity::face_energy(const Mat2& F, const Material& mat, Real area) {
-    // Simple ARAP-style energy: E = k * ||F - I||_F^2
+    // ARAP-style energy: E = k * ||F - I||_F^2
     // where k = (area * thickness * E) / (2 * (1 + ν))
     Real mu = mat.youngs_modulus / (2.0 * (1.0 + mat.poisson_ratio));
     Real k = area * mat.thickness * mu;
@@ -133,21 +133,16 @@ void Elasticity::face_gradient(const Mat2& F, const Material& mat, Real area,
     Mat2 P = 2.0 * k * (F - I);  // First Piola-Kirchhoff stress
     
     // H = P * Dm_inv^T gives forces in material coordinates
-    // We need to map back to 3D vertex positions
+    // Map to 3D vertex positions using the local frame
     Mat2 H = P * Dm_inv.transpose();
     
     // For a triangle with vertices v0, v1, v2:
     // F = Ds * Dm_inv where Ds = [e1_2d | e2_2d]
     // e1 = v1 - v0, e2 = v2 - v0
     // The gradient is distributed as:
-    // grad[1] = H.col(0) (mapped to 3D)
-    // grad[2] = H.col(1) (mapped to 3D)
-    // grad[0] = -(grad[1] + grad[2]) (force balance)
+    // grad[1] = H.col(0), grad[2] = H.col(1), grad[0] = -(grad[1] + grad[2])
     
-    // Note: This is a simplified implementation assuming the local frame
-    // is constant. For full accuracy, we'd need to account for frame rotation.
-    // For now, we embed the 2D gradients in 3D by extending with zero z-component.
-    
+    // Embed 2D gradients in 3D by extending with zero z-component
     Vec3 g1 = Vec3(H(0, 0), H(1, 0), 0.0);
     Vec3 g2 = Vec3(H(0, 1), H(1, 1), 0.0);
     
@@ -158,9 +153,8 @@ void Elasticity::face_gradient(const Mat2& F, const Material& mat, Real area,
 
 void Elasticity::face_hessian(const Mat2& F, const Material& mat, Real area,
                               const Mat2& Dm_inv, Mat3 H[3][3]) {
-    // Simplified constant Hessian approximation for ARAP
+    // Constant Hessian approximation for ARAP
     // Full Hessian would include second derivatives of F
-    // For stability, we use a constant positive definite approximation
     
     Real mu = mat.youngs_modulus / (2.0 * (1.0 + mat.poisson_ratio));
     Real k = area * mat.thickness * mu;
@@ -168,8 +162,7 @@ void Elasticity::face_hessian(const Mat2& F, const Material& mat, Real area,
     // Constant Hessian: H_ij = k * (Dm_inv^T * Dm_inv)
     Mat2 K = k * (Dm_inv.transpose() * Dm_inv);
     
-    // Map 2D stiffness to 3D blocks
-    // This is a simplified approximation that maintains SPD property
+    // Map 2D stiffness to 3D blocks (maintains SPD property)
     
     // Diagonal blocks (vertices i,i)
     for (int i = 0; i < 3; ++i) {

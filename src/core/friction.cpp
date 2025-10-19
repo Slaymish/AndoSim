@@ -42,14 +42,10 @@ Vec3 FrictionModel::compute_gradient(
     const Vec3& contact_normal,
     Real friction_stiffness
 ) {
-    // Compute displacement
     Vec3 displacement = x_current - x_previous;
-    
-    // Extract tangential component
     Vec3 tangential = extract_tangential(displacement, contact_normal);
     
-    // Gradient: ∇V_f = k_f * Δx_t
-    // This is a restoring force opposing tangential motion
+    // Gradient: ∇V_f = k_f * Δx_t (restoring force opposing tangential motion)
     return friction_stiffness * tangential;
 }
 
@@ -58,19 +54,15 @@ Mat3 FrictionModel::compute_hessian(
     Real friction_stiffness
 ) {
     // Hessian: ∇²V_f = k_f * (I - n ⊗ n)
-    // This projects onto tangent space (removes normal component)
+    // Projects onto tangent space (removes normal component)
     
-    // Start with identity matrix scaled by stiffness
     Mat3 H = friction_stiffness * Mat3::Identity();
     
     // Subtract normal projection: n ⊗ n
-    // This is equivalent to outer product: n * n^T
     H -= friction_stiffness * (contact_normal * contact_normal.transpose());
     
-    // Result is symmetric and positive semi-definite (PSD)
-    // Eigenvalues: {k_f, k_f, 0} where 0 corresponds to normal direction
-    
-    // For numerical stability, add small epsilon to ensure strict SPD
+    // Result is PSD with eigenvalues: {k_f, k_f, 0} (0 in normal direction)
+    // Add small epsilon for numerical stability
     const Real epsilon = static_cast<Real>(1e-8);
     H += epsilon * Mat3::Identity();
     
@@ -82,11 +74,8 @@ Vec3 FrictionModel::extract_tangential(
     const Vec3& normal
 ) {
     // Tangential component: Δx_t = Δx - (Δx · n)n
-    // This removes the normal component from displacement
-    
     Real normal_component = displacement.dot(normal);
     Vec3 tangential = displacement - normal_component * normal;
-    
     return tangential;
 }
 
@@ -94,8 +83,8 @@ bool FrictionModel::should_apply_friction(
     const Vec3& tangential_displacement,
     Real threshold
 ) {
-    // Only apply friction if tangential motion exceeds threshold
-    // This prevents numerical noise from triggering friction on stationary contacts
+    // Apply friction only if tangential motion exceeds threshold
+    // Prevents numerical noise from triggering friction on stationary contacts
     Real tangential_mag = tangential_displacement.norm();
     return tangential_mag > threshold;
 }

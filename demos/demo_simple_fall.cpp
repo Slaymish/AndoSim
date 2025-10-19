@@ -1,6 +1,6 @@
 /**
- * Simple falling test - just apply gravity directly without full integrator
- * This will help us debug whether the issue is in the integrator or elsewhere
+ * Basic gravity test using forward Euler integration
+ * Demonstrates simple cloth falling with ground collision
  */
 
 #include "demo_utils.h"
@@ -16,19 +16,19 @@ int main() {
     std::cout << "Simple Gravity Test" << std::endl;
     std::cout << "========================================" << std::endl;
     
-    // Material
+    // Material properties
     Material material;
     material.youngs_modulus = 1e5;
     material.poisson_ratio = 0.3;
     material.density = 200.0;
     material.thickness = 0.001;
     
-    // Create simple cloth
+    // Create cloth mesh
     std::vector<Vec3> vertices;
     std::vector<Triangle> triangles;
     SceneGenerator::create_cloth_mesh(
         1.0, 1.0,
-        10, 10,  // Smaller for debugging
+        10, 10,
         0.0, 1.0, 0.0,  // Start at y=1.0
         vertices, triangles
     );
@@ -44,7 +44,7 @@ int main() {
     
     std::cout << "First vertex mass: " << state.masses[0] << " kg" << std::endl;
     
-    // Simple forward Euler integration
+    // Forward Euler integration with gravity
     Real dt = 0.01;  // 10ms
     Vec3 gravity(0, -9.81, 0);
     
@@ -55,12 +55,12 @@ int main() {
         
         OBJExporter::export_sequence("output/simple_fall/frame", frame, mesh, state);
         
-        // Simple physics: v += g*dt, x += v*dt
+        // Update velocities and positions
         for (size_t i = 0; i < state.num_vertices(); ++i) {
             state.velocities[i] += gravity * dt;
             state.positions[i] += state.velocities[i] * dt;
             
-            // Simple ground collision
+            // Ground collision
             if (state.positions[i][1] < 0.0) {
                 state.positions[i][1] = 0.0;
                 state.velocities[i][1] = 0.0;
