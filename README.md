@@ -1,6 +1,6 @@
 # BlenderSim: Ando Barrier Physics
 
-Blender add-on implementing "A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness" (Ando 2024) for cloth/shell physics simulation.
+Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness](https://doi.org/10.1145/3687908)" (Ando 2024) for cloth/shell physics simulation.
 
 ## Quick Start
 
