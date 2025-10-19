@@ -81,10 +81,28 @@ fi
 
 # Check if tag already exists
 if git rev-parse "$TAG" >/dev/null 2>&1; then
-    print_error "Tag $TAG already exists!"
-    echo "To create a new release, use a different version number"
-    echo "Or delete the old tag: git tag -d $TAG && git push origin :refs/tags/$TAG"
-    exit 1
+    print_warning "Tag $TAG already exists locally!"
+    echo ""
+    read -p "Delete existing tag and recreate? [y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Deleting local tag $TAG..."
+        git tag -d "$TAG"
+        
+        # Check if tag exists on remote
+        if git ls-remote --tags origin | grep -q "refs/tags/$TAG"; then
+            print_info "Deleting remote tag $TAG..."
+            git push origin ":refs/tags/$TAG" 2>/dev/null || print_warning "Could not delete remote tag (may not exist)"
+        fi
+        
+        print_success "Tag deleted. Continuing with release..."
+    else
+        print_error "Cannot create release - tag already exists"
+        echo "To create a new release:"
+        echo "  1. Use a different version number, or"
+        echo "  2. Delete the old tag: git tag -d $TAG && git push origin :refs/tags/$TAG"
+        exit 1
+    fi
 fi
 
 # Pre-release checks
