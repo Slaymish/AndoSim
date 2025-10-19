@@ -63,7 +63,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake build-essential libeigen3-dev python3-dev
-        pip install numpy pybind11
+        pip install numpy
+        pip install "pybind11[global]"
         
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
@@ -75,7 +76,8 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-        pip install numpy pybind11
+        pip install numpy
+        pip install "pybind11[global]"
         Invoke-WebRequest -Uri "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip" -OutFile "eigen.zip"
         Expand-Archive -Path eigen.zip -DestinationPath C:\
         echo "EIGEN3_INCLUDE_DIR=C:\eigen-3.4.0" >> $env:GITHUB_ENV
@@ -85,7 +87,7 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release ..
+        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(python3 -m pybind11 --cmakedir) ..
         cmake --build . --config Release
         
     - name: Build (Windows)
@@ -93,10 +95,12 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR ..
+        $pybind11_dir = python -m pybind11 --cmakedir
+        cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR -DCMAKE_PREFIX_PATH="$pybind11_dir" ..
         cmake --build . --config Release
         
     - name: Package addon
+      id: package
       shell: bash
       run: |
         VERSION=${{ github.ref_name }}
@@ -123,7 +127,7 @@ jobs:
         fi
         
         cd ..
-        echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+        echo "package_name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
         
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
@@ -131,6 +135,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./${{ env.PACKAGE_NAME }}
-        asset_name: ${{ env.PACKAGE_NAME }}
+        asset_path: ./${{ steps.package.outputs.package_name }}
+        asset_name: ${{ steps.package.outputs.package_name }}
         asset_content_type: application/zip
