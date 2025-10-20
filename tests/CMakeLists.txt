@@ -37,3 +37,17 @@ target_include_directories(test_barrier_derivatives PRIVATE
 
 # Register barrier test
 add_test(NAME BarrierDerivativesTest COMMAND test_barrier_derivatives)
+
+# Collision validator metrics tests
+add_executable(test_collision_validator
+    test_collision_validator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/collision_validator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+)
+target_include_directories(test_collision_validator PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${EIGEN3_INCLUDE_DIR}
+)
+
+add_test(NAME CollisionValidatorTest COMMAND test_collision_validator)
