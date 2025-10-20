@@ -69,7 +69,7 @@ jobs:
     - name: Build module (Windows)
       if: runner.os == 'Windows'
       run: |
-        mkdir build
+        if (-Not (Test-Path build)) { New-Item -ItemType Directory -Path build }
         cd build
         $pybind11_dir = python -m pybind11 --cmakedir
         cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR -DCMAKE_PREFIX_PATH="$pybind11_dir" ..
