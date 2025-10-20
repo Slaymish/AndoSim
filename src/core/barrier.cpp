@@ -151,6 +151,26 @@ void Barrier::compute_contact_gradient(
     }
 }
 
+void Barrier::compute_rigid_contact_gradient(
+    const ContactPair& contact,
+    Real g_max,
+    Real k_bar,
+    VecX& gradient) {
+
+    if (!in_domain(contact.gap, g_max)) return;
+
+    Vec3 normal = contact.normal;
+    Real norm = normal.norm();
+    if (norm > Real(1e-9)) {
+        normal /= norm;
+    } else {
+        normal = Vec3(0.0, 1.0, 0.0);
+    }
+
+    Real dV_dg = compute_gradient(contact.gap, g_max, k_bar);
+    gradient.segment<3>(contact.idx0 * 3) += dV_dg * normal;
+}
+
 // Compute gap Hessian for point-triangle
 void Barrier::compute_gap_hessian_point_triangle(
     const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c,
@@ -165,6 +185,36 @@ void Barrier::compute_gap_hessian_point_triangle(
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
             hess[i][j].setZero();
+        }
+    }
+}
+
+void Barrier::compute_rigid_contact_hessian(
+    const ContactPair& contact,
+    Real g_max,
+    Real k_bar,
+    std::vector<Triplet>& triplets) {
+
+    if (!in_domain(contact.gap, g_max)) return;
+
+    Vec3 normal = contact.normal;
+    Real norm = normal.norm();
+    if (norm > Real(1e-9)) {
+        normal /= norm;
+    } else {
+        normal = Vec3(0.0, 1.0, 0.0);
+    }
+
+    Real d2V_dg2 = compute_hessian(contact.gap, g_max, k_bar);
+    Mat3 H = d2V_dg2 * (normal * normal.transpose());
+
+    Index idx = contact.idx0;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            Real val = H(i, j);
+            if (std::abs(val) > 1e-12) {
+                triplets.emplace_back(3 * idx + i, 3 * idx + j, val);
+            }
         }
     }
 }

@@ -14,6 +14,7 @@ add_executable(test_basic
     ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
     ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
     ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
 )
 target_include_directories(test_basic PRIVATE 
     ${CMAKE_SOURCE_DIR}/src/core
@@ -29,6 +30,7 @@ add_executable(test_barrier_derivatives
     ${CMAKE_SOURCE_DIR}/src/core/barrier.cpp
     ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
     ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
 )
 target_include_directories(test_barrier_derivatives PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
@@ -51,3 +53,26 @@ target_include_directories(test_collision_validator PRIVATE
 )
 
 add_test(NAME CollisionValidatorTest COMMAND test_collision_validator)
+
+add_executable(test_hybrid
+    test_hybrid.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/constraints.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/elasticity.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/stiffness.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/collision.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/line_search.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/barrier.cpp
+)
+target_include_directories(test_hybrid PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${EIGEN3_INCLUDE_DIR}
+    /usr/include/eigen3
+)
+
+add_test(NAME HybridContactTest COMMAND test_hybrid)

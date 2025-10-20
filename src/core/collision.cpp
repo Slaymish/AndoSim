@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <limits>
 
+#include "rigid_body.h"
+
 namespace ando_barrier {
 
 // Build AABB for triangle
@@ -473,6 +475,50 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
                                       pair.witness_p, pair.witness_q)) {
                 if (pair.gap < 0.01) {  // Within collision threshold
                     contacts.push_back(pair);
+                }
+            }
+        }
+    }
+}
+
+void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
+                                      const std::vector<RigidBody>& rigids,
+                                      std::vector<ContactPair>& contacts) {
+    contacts.clear();
+
+    // Deformable self collisions
+    detect_all_collisions(mesh, state, contacts);
+
+    if (rigids.empty()) {
+        return;
+    }
+
+    // Deformable vs rigid
+    for (size_t rb = 0; rb < rigids.size(); ++rb) {
+        const RigidBody& body = rigids[rb];
+        std::vector<Vec3> rigid_vertices = body.world_vertices();
+
+        for (size_t v = 0; v < state.positions.size(); ++v) {
+            const Vec3& p = state.positions[v];
+
+            for (const Triangle& tri : body.triangles()) {
+                const Vec3& a = rigid_vertices[tri.v[0]];
+                const Vec3& b = rigid_vertices[tri.v[1]];
+                const Vec3& c = rigid_vertices[tri.v[2]];
+
+                ContactPair pair;
+                pair.type = ContactType::RIGID_POINT_TRIANGLE;
+                pair.idx0 = static_cast<Index>(v);
+                pair.idx1 = tri.v[0];
+                pair.idx2 = tri.v[1];
+                pair.idx3 = tri.v[2];
+                pair.rigid_body_index = static_cast<int>(rb);
+
+                if (narrow_phase_point_triangle(p, a, b, c, pair.gap, pair.normal,
+                                                pair.witness_p, pair.witness_q)) {
+                    if (pair.gap < 0.01) {
+                        contacts.push_back(pair);
+                    }
                 }
             }
         }

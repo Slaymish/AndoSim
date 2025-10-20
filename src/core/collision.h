@@ -8,6 +8,8 @@
 
 namespace ando_barrier {
 
+class RigidBody;
+
 // Axis-aligned bounding box
 struct AABB {
     Vec3 min;
@@ -65,9 +67,10 @@ struct BVHNode {
 
 // Contact types
 enum class ContactType {
-    POINT_TRIANGLE,  // Vertex vs triangle
-    EDGE_EDGE,       // Edge vs edge
-    WALL             // Vertex vs plane
+    POINT_TRIANGLE,        // Vertex vs triangle
+    EDGE_EDGE,             // Edge vs edge
+    WALL,                  // Vertex vs plane
+    RIGID_POINT_TRIANGLE   // Vertex vs rigid triangle
 };
 
 // Contact pair from collision detection
@@ -85,9 +88,11 @@ struct ContactPair {
     Vec3 witness_p;     // Witness point on primitive 0
     Vec3 witness_q;     // Witness point on primitive 1
     
-    ContactPair() : type(ContactType::POINT_TRIANGLE), 
+    int rigid_body_index;
+
+    ContactPair() : type(ContactType::POINT_TRIANGLE),
                    idx0(-1), idx1(-1), idx2(-1), idx3(-1),
-                   gap(0.0) {}
+                   gap(0.0), rigid_body_index(-1) {}
 };
 
 // Collision detection system
@@ -131,6 +136,10 @@ public:
     // Full collision detection pipeline
     static void detect_all_collisions(const Mesh& mesh, const State& state,
                                      std::vector<ContactPair>& contacts);
+
+    static void detect_all_collisions(const Mesh& mesh, const State& state,
+                                      const std::vector<RigidBody>& rigids,
+                                      std::vector<ContactPair>& contacts);
 
 private:
     // Helper: build BVH recursively
