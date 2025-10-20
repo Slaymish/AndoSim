@@ -11,8 +11,9 @@
 namespace ando_barrier {
 
 void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
-                     const SimParams& params) {
-    
+                     const SimParams& params,
+                     std::vector<RigidBody>* rigid_bodies) {
+
     const int n = static_cast<int>(state.num_vertices());
     const Real dt = params.dt;
     
@@ -35,7 +36,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     
     // 2. Detect collisions
     std::vector<ContactPair> contacts;
-    detect_collisions(mesh, state, contacts);
+    detect_collisions(mesh, state, contacts, rigid_bodies);
     
     // 3. β accumulation loop (Section 3.6)
     Real beta = 0.0;
@@ -44,7 +45,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     
     while (beta < params.beta_max && beta_iter < max_beta_iters) {
         Real alpha = inner_newton_step(mesh, state, x_target, contacts,
-                                      constraints, params, beta);
+                                      constraints, params, beta, rigid_bodies);
         
         // Update β: β ← β + (1 - β) α
         beta = beta + (1.0 - beta) * alpha;
@@ -59,7 +60,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     
     // 4. Error reduction pass with full β
     if (beta > 1e-6) {
-        inner_newton_step(mesh, state, x_target, contacts, constraints, params, beta);
+        inner_newton_step(mesh, state, x_target, contacts, constraints, params, beta, rigid_bodies);
     }
     
     // 5. Update velocities: v = (x_new - x_old) / (β Δt) (Section 3.6)
@@ -82,8 +83,12 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
         }
 
         if (params.contact_restitution > 0.0) {
-            apply_contact_restitution(mesh, constraints, state, params);
+            apply_contact_restitution(mesh, constraints, state, params, rigid_bodies);
         }
+    }
+
+    if (rigid_bodies && !rigid_bodies->empty()) {
+        apply_rigid_coupling(mesh, state, *rigid_bodies, constraints, params);
     }
 }
 
@@ -94,14 +99,15 @@ Real Integrator::inner_newton_step(
     const std::vector<ContactPair>& contacts,
     const Constraints& constraints,
     const SimParams& params,
-    Real beta) {
+    Real beta,
+    std::vector<RigidBody>* rigid_bodies) {
     
     const int n = static_cast<int>(state.num_vertices());
     
     for (int newton_iter = 0; newton_iter < params.max_newton_steps; ++newton_iter) {
         // Compute gradient: g = ∇E
         VecX gradient = VecX::Zero(3 * n);
-        compute_gradient(mesh, state, x_target, contacts, constraints, params, beta, gradient);
+        compute_gradient(mesh, state, x_target, contacts, constraints, params, beta, gradient, rigid_bodies);
         
         // Check convergence
         VecX x_current;
@@ -113,7 +119,7 @@ Real Integrator::inner_newton_step(
         
         // Assemble Hessian: H = ∇²E
         SparseMatrix hessian;
-        assemble_system_matrix(mesh, state, contacts, constraints, params, beta, hessian);
+        assemble_system_matrix(mesh, state, contacts, constraints, params, beta, hessian, rigid_bodies);
         
         // Solve: H d = -g
         VecX direction = VecX::Zero(3 * n);
@@ -168,9 +174,10 @@ Real Integrator::inner_newton_step(
 }
 
 std::vector<ContactPair> Integrator::compute_contacts(const Mesh& mesh,
-                                                     const State& state) {
+                                                     const State& state,
+                                                     const std::vector<RigidBody>* rigid_bodies) {
     std::vector<ContactPair> contacts;
-    detect_collisions(mesh, state, contacts);
+    detect_collisions(mesh, state, contacts, rigid_bodies);
     return contacts;
 }
 
@@ -182,10 +189,13 @@ void Integrator::compute_gradient(
     const Constraints& constraints,
     const SimParams& params,
     Real beta,
-    VecX& gradient) {
-    
+    VecX& gradient,
+    std::vector<RigidBody>* rigid_bodies) {
+
     const int n = static_cast<int>(state.num_vertices());
     const Real dt = params.dt;
+
+    (void)rigid_bodies;
     
     // Flatten current positions
     VecX x_current;
@@ -230,17 +240,25 @@ void Integrator::compute_gradient(
     // 3. Barrier forces: Σ ∇V_barrier
     // For each contact
     for (const auto& contact : contacts) {
-        if (contact.type == ContactType::POINT_TRIANGLE) {
+        if (contact.type == ContactType::POINT_TRIANGLE ||
+            contact.type == ContactType::RIGID_POINT_TRIANGLE) {
             // Extract H_block for vertex involved in contact
             Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
                 state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
                 contact.normal, H_block, params.min_gap
             );
-            
-            // Add barrier gradient
-            Barrier::compute_contact_gradient(contact, state, 
-                                             params.contact_gap_max, k_bar, gradient);
+
+            if (contact.type == ContactType::POINT_TRIANGLE) {
+                // Add barrier gradient
+                Barrier::compute_contact_gradient(contact, state,
+                                                 params.contact_gap_max, k_bar, gradient);
+            } else {
+                Barrier::compute_rigid_contact_gradient(contact,
+                                                        params.contact_gap_max,
+                                                        k_bar,
+                                                        gradient);
+            }
         }
     }
     
@@ -325,10 +343,13 @@ void Integrator::assemble_system_matrix(
     const Constraints& constraints,
     const SimParams& params,
     Real beta,
-    SparseMatrix& hessian) {
-    
+    SparseMatrix& hessian,
+    std::vector<RigidBody>* rigid_bodies) {
+
     const int n = static_cast<int>(state.num_vertices());
     const Real dt = params.dt;
+
+    (void)rigid_bodies;
     
     // Initialize sparse matrix
     hessian.resize(3 * n, 3 * n);
@@ -364,7 +385,8 @@ void Integrator::assemble_system_matrix(
     // 3. Barrier Hessians: Σ H_barrier
     // For each contact
     for (const auto& contact : contacts) {
-        if (contact.type == ContactType::POINT_TRIANGLE) {
+        if (contact.type == ContactType::POINT_TRIANGLE ||
+            contact.type == ContactType::RIGID_POINT_TRIANGLE) {
             // Extract H_block for accurate stiffness
             Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
@@ -372,10 +394,17 @@ void Integrator::assemble_system_matrix(
                 contact.normal, H_block, params.min_gap
             );
 
-            // Append barrier Hessian contributions directly
-            Barrier::compute_contact_hessian(contact, state,
-                                            params.contact_gap_max, k_bar,
-                                            triplets);
+            if (contact.type == ContactType::POINT_TRIANGLE) {
+                // Append barrier Hessian contributions directly
+                Barrier::compute_contact_hessian(contact, state,
+                                                params.contact_gap_max, k_bar,
+                                                triplets);
+            } else {
+                Barrier::compute_rigid_contact_hessian(contact,
+                                                       params.contact_gap_max,
+                                                       k_bar,
+                                                       triplets);
+            }
         }
     }
 
@@ -462,9 +491,14 @@ void Integrator::assemble_system_matrix(
 }
 
 void Integrator::detect_collisions(const Mesh& mesh, const State& state,
-                                  std::vector<ContactPair>& contacts) {
+                                  std::vector<ContactPair>& contacts,
+                                  const std::vector<RigidBody>* rigid_bodies) {
     contacts.clear();
-    Collision::detect_all_collisions(mesh, state, contacts);
+    if (rigid_bodies) {
+        Collision::detect_all_collisions(mesh, state, *rigid_bodies, contacts);
+    } else {
+        Collision::detect_all_collisions(mesh, state, contacts);
+    }
 }
 
 void Integrator::apply_velocity_damping(State& state, Real damping_factor) {
@@ -478,7 +512,8 @@ void Integrator::apply_velocity_damping(State& state, Real damping_factor) {
 void Integrator::apply_contact_restitution(const Mesh& mesh,
                                           const Constraints& constraints,
                                           State& state,
-                                          const SimParams& params) {
+                                          const SimParams& params,
+                                          std::vector<RigidBody>* rigid_bodies) {
     Real restitution = std::clamp(params.contact_restitution, Real(0.0), Real(1.0));
     if (restitution <= Real(0.0)) {
         return;
@@ -502,7 +537,11 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
     };
 
     std::vector<ContactPair> contacts;
-    Collision::detect_all_collisions(mesh, state, contacts);
+    if (rigid_bodies) {
+        Collision::detect_all_collisions(mesh, state, *rigid_bodies, contacts);
+    } else {
+        Collision::detect_all_collisions(mesh, state, contacts);
+    }
 
     Real gap_limit = std::max(params.contact_gap_max, Real(1e-5));
     for (const auto& contact : contacts) {
@@ -519,6 +558,46 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
             apply_impulse(contact.idx3, -contact.normal);
         } else if (contact.type == ContactType::WALL) {
             apply_impulse(contact.idx0, contact.normal);
+        } else if (contact.type == ContactType::RIGID_POINT_TRIANGLE && rigid_bodies &&
+                   contact.rigid_body_index >= 0 &&
+                   contact.rigid_body_index < static_cast<int>(rigid_bodies->size())) {
+            Vec3 normal = contact.normal;
+            Real norm = normal.norm();
+            if (norm < Real(1e-8)) {
+                continue;
+            }
+            normal /= norm;
+
+            Index vidx = contact.idx0;
+            if (vidx < 0 || static_cast<size_t>(vidx) >= state.velocities.size()) {
+                continue;
+            }
+
+            RigidBody& body = (*rigid_bodies)[contact.rigid_body_index];
+
+            Vec3 vertex_velocity = state.velocities[vidx];
+            Vec3 body_velocity = body.velocity_at_point(contact.witness_q);
+            Vec3 relative = vertex_velocity - body_velocity;
+            Real vn = relative.dot(normal);
+            if (vn >= Real(0.0)) {
+                continue;
+            }
+
+            Real inv_mass = state.masses[vidx] > Real(0.0) ? Real(1.0) / state.masses[vidx] : Real(0.0);
+            Vec3 r = contact.witness_q - body.position();
+            Vec3 cross = r.cross(normal);
+            Real angular_term = cross.dot(body.inertia_world_inv() * cross);
+            Real denom = inv_mass + angular_term;
+            if (denom <= Real(0.0)) {
+                continue;
+            }
+
+            Real j = -(Real(1.0) + restitution) * vn / denom;
+            Vec3 impulse = j * normal;
+
+            vertex_velocity += impulse * inv_mass;
+            state.velocities[vidx] = vertex_velocity;
+            body.apply_impulse(contact.witness_q, -impulse);
         }
     }
 
@@ -538,6 +617,83 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
                 apply_impulse(static_cast<Index>(i), normal);
             }
         }
+    }
+}
+
+void Integrator::apply_rigid_coupling(const Mesh& mesh,
+                                     const State& state,
+                                     std::vector<RigidBody>& rigid_bodies,
+                                     const Constraints& constraints,
+                                     const SimParams& params) {
+    if (rigid_bodies.empty()) {
+        return;
+    }
+
+    (void)constraints;
+
+    std::vector<ContactPair> contacts;
+    Collision::detect_all_collisions(mesh, state, rigid_bodies, contacts);
+
+    const int n = static_cast<int>(state.num_vertices());
+    const Real dt = params.dt;
+
+    // Assemble base Hessian for stiffness extraction (mass + elasticity)
+    SparseMatrix H_elastic;
+    H_elastic.resize(3 * n, 3 * n);
+    std::vector<Triplet> base_triplets;
+    base_triplets.reserve(9 * n + 9 * mesh.triangles.size() * 9);
+
+    Real dt2_inv = 1.0 / (dt * dt);
+    for (int i = 0; i < n; ++i) {
+        Real mass_factor = state.masses[i] * dt2_inv;
+        for (int j = 0; j < 3; ++j) {
+            base_triplets.emplace_back(3 * i + j, 3 * i + j, mass_factor);
+        }
+    }
+
+    std::vector<Triplet> elastic_triplets;
+    Elasticity::compute_hessian(mesh, state, elastic_triplets);
+    base_triplets.insert(base_triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
+    H_elastic.setFromTriplets(base_triplets.begin(), base_triplets.end());
+
+    for (auto& body : rigid_bodies) {
+        body.clear_accumulators();
+    }
+
+    for (const auto& contact : contacts) {
+        if (contact.type != ContactType::RIGID_POINT_TRIANGLE) {
+            continue;
+        }
+        if (contact.rigid_body_index < 0 ||
+            contact.rigid_body_index >= static_cast<int>(rigid_bodies.size())) {
+            continue;
+        }
+
+        Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
+        Real k_bar = Stiffness::compute_contact_stiffness(
+            state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
+            contact.normal, H_block, params.min_gap
+        );
+
+        Vec3 normal = contact.normal;
+        Real norm = normal.norm();
+        if (norm < Real(1e-8)) {
+            continue;
+        }
+        normal /= norm;
+
+        Real dV_dg = Barrier::compute_gradient(contact.gap, params.contact_gap_max, k_bar);
+        if (std::abs(dV_dg) < Real(1e-12)) {
+            continue;
+        }
+
+        Vec3 force = dV_dg * normal;
+        RigidBody& body = rigid_bodies[contact.rigid_body_index];
+        body.apply_force(contact.witness_q, -force, Real(0.0));
+    }
+
+    for (auto& body : rigid_bodies) {
+        body.integrate(params.dt);
     }
 }
 

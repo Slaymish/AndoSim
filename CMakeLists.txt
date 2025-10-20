@@ -68,6 +68,7 @@ set(CORE_SOURCES
     src/core/energy_tracker.cpp
     src/core/collision_validator.cpp
     src/core/adaptive_timestep.cpp
+    src/core/rigid_body.cpp
 )
 
 # Core library headers
@@ -88,6 +89,7 @@ set(CORE_HEADERS
     src/core/energy_tracker.h
     src/core/collision_validator.h
     src/core/types.h
+    src/core/rigid_body.h
 )
 
 # Python bindings module

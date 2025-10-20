@@ -15,6 +15,7 @@
 #include "energy_tracker.h"
 #include "collision_validator.h"
 #include "adaptive_timestep.h"
+#include "rigid_body.h"
 
 namespace py = pybind11;
 using namespace ando_barrier;
@@ -189,6 +190,7 @@ PYBIND11_MODULE(ando_barrier_core, m) {
         .value("POINT_TRIANGLE", ContactType::POINT_TRIANGLE)
         .value("EDGE_EDGE", ContactType::EDGE_EDGE)
         .value("WALL", ContactType::WALL)
+        .value("RIGID_POINT_TRIANGLE", ContactType::RIGID_POINT_TRIANGLE)
         .export_values();
 
     py::class_<ContactPair>(m, "Contact")
@@ -198,10 +200,52 @@ PYBIND11_MODULE(ando_barrier_core, m) {
         .def_property_readonly("idx1", [](const ContactPair& c) { return c.idx1; })
         .def_property_readonly("idx2", [](const ContactPair& c) { return c.idx2; })
         .def_property_readonly("idx3", [](const ContactPair& c) { return c.idx3; })
+        .def_property_readonly("rigid_body_index", [](const ContactPair& c) { return c.rigid_body_index; })
         .def_property_readonly("gap", [](const ContactPair& c) { return c.gap; })
         .def_property_readonly("normal", [](const ContactPair& c) { return c.normal; })
         .def_property_readonly("witness_p", [](const ContactPair& c) { return c.witness_p; })
         .def_property_readonly("witness_q", [](const ContactPair& c) { return c.witness_q; });
+
+    py::class_<RigidBody>(m, "RigidBody")
+        .def(py::init<>())
+        .def("initialize", [](RigidBody& body, py::array_t<Real> vertices, py::array_t<int32_t> triangles, Real density) {
+            auto verts_arr = vertices.unchecked<2>();
+            auto tris_arr = triangles.unchecked<2>();
+
+            std::vector<Vec3> verts;
+            verts.reserve(verts_arr.shape(0));
+            for (py::ssize_t i = 0; i < verts_arr.shape(0); ++i) {
+                verts.emplace_back(verts_arr(i, 0), verts_arr(i, 1), verts_arr(i, 2));
+            }
+
+            std::vector<Triangle> tris;
+            tris.reserve(tris_arr.shape(0));
+            for (py::ssize_t i = 0; i < tris_arr.shape(0); ++i) {
+                tris.emplace_back(tris_arr(i, 0), tris_arr(i, 1), tris_arr(i, 2));
+            }
+
+            body.initialize(verts, tris, density);
+        })
+        .def_property("position",
+            [](const RigidBody& body) { return std::vector<Real>{body.position()[0], body.position()[1], body.position()[2]}; },
+            [](RigidBody& body, const std::vector<Real>& p) { body.set_position(Vec3(p[0], p[1], p[2])); })
+        .def_property("linear_velocity",
+            [](const RigidBody& body) { return std::vector<Real>{body.linear_velocity()[0], body.linear_velocity()[1], body.linear_velocity()[2]}; },
+            [](RigidBody& body, const std::vector<Real>& v) { body.set_linear_velocity(Vec3(v[0], v[1], v[2])); })
+        .def_property_readonly("mass", &RigidBody::mass)
+        .def("world_vertices", [](const RigidBody& body) {
+            auto verts = body.world_vertices();
+            py::array_t<Real> result({verts.size(), size_t(3)});
+            auto r = result.mutable_unchecked<2>();
+            for (size_t i = 0; i < verts.size(); ++i) {
+                r(i, 0) = verts[i][0];
+                r(i, 1) = verts[i][1];
+                r(i, 2) = verts[i][2];
+            }
+            return result;
+        })
+        .def("apply_impulse", &RigidBody::apply_impulse)
+        .def("integrate", &RigidBody::integrate);
     
     // Elasticity class (static methods)
     py::class_<Elasticity>(m, "Elasticity")
@@ -252,14 +296,46 @@ PYBIND11_MODULE(ando_barrier_core, m) {
     // Integrator class (static methods for simulation)
     py::class_<Integrator>(m, "Integrator")
         .def(py::init<>())
-        .def_static("step", &Integrator::step,
-            py::arg("mesh"), py::arg("state"), py::arg("constraints"), py::arg("params"),
+        .def_static("step",
+            [](Mesh& mesh, State& state, Constraints& constraints, const SimParams& params, py::object rigid_list) {
+                if (rigid_list.is_none()) {
+                    Integrator::step(mesh, state, constraints, params, nullptr);
+                    return;
+                }
+
+                std::vector<RigidBody*> handles;
+                std::vector<RigidBody> storage;
+                handles.reserve(py::len(rigid_list));
+                storage.reserve(py::len(rigid_list));
+
+                for (auto item : rigid_list) {
+                    RigidBody& body = item.cast<RigidBody&>();
+                    handles.push_back(&body);
+                    storage.push_back(body);
+                }
+
+                Integrator::step(mesh, state, constraints, params, &storage);
+
+                for (size_t i = 0; i < handles.size(); ++i) {
+                    *handles[i] = storage[i];
+                }
+            },
+            py::arg("mesh"), py::arg("state"), py::arg("constraints"), py::arg("params"), py::arg("rigid_bodies") = py::none(),
             "Take one simulation step using Newton integrator with β accumulation")
         .def_static("compute_contacts",
-            [](const Mesh& mesh, const State& state) {
-                return Integrator::compute_contacts(mesh, state);
+            [](const Mesh& mesh, const State& state, py::object rigid_list) {
+                if (rigid_list.is_none()) {
+                    return Integrator::compute_contacts(mesh, state, nullptr);
+                }
+
+                std::vector<RigidBody> storage;
+                storage.reserve(py::len(rigid_list));
+                for (auto item : rigid_list) {
+                    storage.push_back(item.cast<RigidBody>());
+                }
+                return Integrator::compute_contacts(mesh, state, &storage);
             },
-            py::arg("mesh"), py::arg("state"),
+            py::arg("mesh"), py::arg("state"), py::arg("rigid_bodies") = py::none(),
             "Detect all collision contacts for the current mesh/state");
     
     // EnergyDiagnostics struct

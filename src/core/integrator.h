@@ -5,6 +5,7 @@
 #include "state.h"
 #include "constraints.h"
 #include "collision.h"
+#include "rigid_body.h"
 #include <vector>
 
 namespace ando_barrier {
@@ -29,8 +30,9 @@ public:
      * @param constraints Pin and wall constraints
      * @param params Simulation parameters
      */
-    static void step(Mesh& mesh, State& state, Constraints& constraints, 
-                    const SimParams& params);
+    static void step(Mesh& mesh, State& state, Constraints& constraints,
+                    const SimParams& params,
+                    std::vector<RigidBody>* rigid_bodies = nullptr);
 
     /**
      * Collect current contact pairs using the same pipeline as the integrator.
@@ -40,7 +42,8 @@ public:
      * @return Vector of detected contact pairs
      */
     static std::vector<ContactPair> compute_contacts(const Mesh& mesh,
-                                                     const State& state);
+                                                     const State& state,
+                                                     const std::vector<RigidBody>* rigid_bodies = nullptr);
 
 private:
     /**
@@ -62,7 +65,8 @@ private:
         const std::vector<ContactPair>& contacts,
         const Constraints& constraints,
         const SimParams& params,
-        Real beta
+        Real beta,
+        std::vector<RigidBody>* rigid_bodies
     );
     
     /**
@@ -88,7 +92,8 @@ private:
         const Constraints& constraints,
         const SimParams& params,
         Real beta,
-        VecX& gradient
+        VecX& gradient,
+        std::vector<RigidBody>* rigid_bodies
     );
     
     /**
@@ -111,7 +116,8 @@ private:
         const Constraints& constraints,
         const SimParams& params,
         Real beta,
-        SparseMatrix& hessian
+        SparseMatrix& hessian,
+        std::vector<RigidBody>* rigid_bodies
     );
     
     /**
@@ -122,13 +128,21 @@ private:
      * @param contacts Output contact pairs
      */
     static void detect_collisions(const Mesh& mesh, const State& state,
-                                  std::vector<ContactPair>& contacts);
+                                  std::vector<ContactPair>& contacts,
+                                  const std::vector<RigidBody>* rigid_bodies);
 
     static void apply_velocity_damping(State& state, Real damping_factor);
     static void apply_contact_restitution(const Mesh& mesh,
                                           const Constraints& constraints,
                                           State& state,
-                                          const SimParams& params);
+                                          const SimParams& params,
+                                          std::vector<RigidBody>* rigid_bodies);
+
+    static void apply_rigid_coupling(const Mesh& mesh,
+                                     const State& state,
+                                     std::vector<RigidBody>& rigid_bodies,
+                                     const Constraints& constraints,
+                                     const SimParams& params);
 };
 
 } // namespace ando_barrier

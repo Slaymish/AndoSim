@@ -25,6 +25,13 @@ public:
         Real k_bar,  // Pre-computed stiffness (treated as constant)
         VecX& gradient  // Add to gradient (4 vertices × 3D)
     );
+
+    static void compute_rigid_contact_gradient(
+        const ContactPair& contact,
+        Real g_max,
+        Real k_bar,
+        VecX& gradient
+    );
     
     // Contact Hessian: ∂²V/∂x² = (∂²V/∂g²)(∂g/∂x)(∂g/∂x)ᵀ + (∂V/∂g)(∂²g/∂x²)
     static void compute_contact_hessian(
@@ -33,6 +40,13 @@ public:
         Real g_max,
         Real k_bar,
         std::vector<Triplet>& triplets  // Append 12×12 block contributions
+    );
+
+    static void compute_rigid_contact_hessian(
+        const ContactPair& contact,
+        Real g_max,
+        Real k_bar,
+        std::vector<Triplet>& triplets
     );
     
     // Pin constraint derivatives: gap = ||x_i - p_target||
