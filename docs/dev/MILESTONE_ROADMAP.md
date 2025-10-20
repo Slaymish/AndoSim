@@ -15,7 +15,7 @@ This document outlines the key milestones for turning the AndoSim physics engine
 - [~] Expose core physics parameters in Blender:
   - [x] Time stepping & solver controls (dt, β, Newton/PCG).
   - [x] Material properties (E, ν, density, thickness).
-  - [ ] Damping & restitution presets (material presets ready; needs solver/parameter support).
+  - [x] Damping & restitution presets (parameters wired through presets, UI, and solver).
 - [x] Enable single-frame simulation preview in the viewport (Step operator + realtime modal).
 - [~] Ensure correct unit scaling and axis alignment with Blender.
   - Z-up alignment handled; scaling audit still queued for validation pass.
@@ -55,9 +55,9 @@ This document outlines the key milestones for turning the AndoSim physics engine
 ---
 
 ### Current Focus
-- Damping & restitution parameter wiring for presets and solver hooks.
 - Smooth elastic response tuning and dense contact stability tests.
 - Documentation refresh now that Phase 2 reliability features are in place.
+- Capture validation data for the new damping/restitution controls.
 
 ---
 

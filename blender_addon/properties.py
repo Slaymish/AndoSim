@@ -33,6 +33,8 @@ _MATERIAL_PRESET_DATA = {
             "enable_strain_limiting": True,
             "strain_limit": 8.0,
             "strain_tau": 0.08,
+            "velocity_damping": 0.05,
+            "contact_restitution": 0.15,
         },
     },
     "RUBBER": {
@@ -53,6 +55,8 @@ _MATERIAL_PRESET_DATA = {
             "contact_gap_max": 3e-4,
             "wall_gap": 3e-4,
             "enable_strain_limiting": False,
+            "velocity_damping": 0.03,
+            "contact_restitution": 0.4,
         },
     },
     "METAL": {
@@ -73,6 +77,8 @@ _MATERIAL_PRESET_DATA = {
             "contact_gap_max": 2e-4,
             "wall_gap": 2e-4,
             "enable_strain_limiting": False,
+            "velocity_damping": 0.02,
+            "contact_restitution": 0.6,
         },
     },
     "JELLY": {
@@ -95,6 +101,8 @@ _MATERIAL_PRESET_DATA = {
             "enable_strain_limiting": True,
             "strain_limit": 15.0,
             "strain_tau": 0.12,
+            "velocity_damping": 0.08,
+            "contact_restitution": 0.35,
         },
     },
     "LEATHER": {
@@ -117,6 +125,8 @@ _MATERIAL_PRESET_DATA = {
             "enable_strain_limiting": True,
             "strain_limit": 5.0,
             "strain_tau": 0.05,
+            "velocity_damping": 0.05,
+            "contact_restitution": 0.2,
         },
     },
     "SILK": {
@@ -139,6 +149,8 @@ _MATERIAL_PRESET_DATA = {
             "enable_strain_limiting": True,
             "strain_limit": 6.0,
             "strain_tau": 0.06,
+            "velocity_damping": 0.03,
+            "contact_restitution": 0.25,
         },
     },
     "CANVAS": {
@@ -161,6 +173,8 @@ _MATERIAL_PRESET_DATA = {
             "enable_strain_limiting": True,
             "strain_limit": 4.0,
             "strain_tau": 0.04,
+            "velocity_damping": 0.06,
+            "contact_restitution": 0.15,
         },
     },
     "FOAM": {
@@ -183,6 +197,8 @@ _MATERIAL_PRESET_DATA = {
             "enable_strain_limiting": True,
             "strain_limit": 20.0,
             "strain_tau": 0.15,
+            "velocity_damping": 0.12,
+            "contact_restitution": 0.1,
         },
     },
     "PLASTIC": {
@@ -203,6 +219,8 @@ _MATERIAL_PRESET_DATA = {
             "contact_gap_max": 2.5e-4,
             "wall_gap": 2.5e-4,
             "enable_strain_limiting": False,
+            "velocity_damping": 0.04,
+            "contact_restitution": 0.3,
         },
     },
 }
@@ -445,7 +463,26 @@ class AndoBarrierSceneProperties(PropertyGroup):
         unit='LENGTH',
         update=_mark_scene_custom,
     )
-    
+
+    # Damping & restitution
+    velocity_damping: FloatProperty(
+        name="Velocity Damping",
+        description="Fraction of velocity removed each step (0 disables damping)",
+        default=0.05,
+        min=0.0,
+        max=0.99,
+        update=_mark_scene_custom,
+    )
+
+    contact_restitution: FloatProperty(
+        name="Restitution",
+        description="Bounce factor for contacts (0=inelastic, 1=perfectly elastic)",
+        default=0.15,
+        min=0.0,
+        max=1.0,
+        update=_mark_scene_custom,
+    )
+
     # Strain limiting (optional)
     enable_strain_limiting: BoolProperty(
         name="Enable Strain Limiting",

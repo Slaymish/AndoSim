@@ -123,6 +123,12 @@ private:
      */
     static void detect_collisions(const Mesh& mesh, const State& state,
                                   std::vector<ContactPair>& contacts);
+
+    static void apply_velocity_damping(State& state, Real damping_factor);
+    static void apply_contact_restitution(const Mesh& mesh,
+                                          const Constraints& constraints,
+                                          State& state,
+                                          const SimParams& params);
 };
 
 } // namespace ando_barrier

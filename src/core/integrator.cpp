@@ -67,7 +67,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
         VecX x_new;
         state.flatten_positions(x_new);
         VecX dx = x_new - x_old;
-        
+
         Real beta_dt = beta * dt;
         for (int i = 0; i < n; ++i) {
             state.velocities[i] = Vec3(
@@ -75,6 +75,14 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
                 dx[3*i+1] / beta_dt,
                 dx[3*i+2] / beta_dt
             );
+        }
+
+        if (params.velocity_damping > 0.0) {
+            apply_velocity_damping(state, params.velocity_damping);
+        }
+
+        if (params.contact_restitution > 0.0) {
+            apply_contact_restitution(mesh, constraints, state, params);
         }
     }
 }
@@ -457,6 +465,80 @@ void Integrator::detect_collisions(const Mesh& mesh, const State& state,
                                   std::vector<ContactPair>& contacts) {
     contacts.clear();
     Collision::detect_all_collisions(mesh, state, contacts);
+}
+
+void Integrator::apply_velocity_damping(State& state, Real damping_factor) {
+    Real clamped = std::clamp(damping_factor, Real(0.0), Real(1.0));
+    Real scale = Real(1.0) - clamped;
+    for (auto& v : state.velocities) {
+        v *= scale;
+    }
+}
+
+void Integrator::apply_contact_restitution(const Mesh& mesh,
+                                          const Constraints& constraints,
+                                          State& state,
+                                          const SimParams& params) {
+    Real restitution = std::clamp(params.contact_restitution, Real(0.0), Real(1.0));
+    if (restitution <= Real(0.0)) {
+        return;
+    }
+
+    auto apply_impulse = [&](Index idx, const Vec3& normal) {
+        if (idx < 0 || static_cast<size_t>(idx) >= state.velocities.size()) {
+            return;
+        }
+        Vec3 n = normal;
+        Real norm = n.norm();
+        if (norm < Real(1e-8)) {
+            return;
+        }
+        n /= norm;
+        Vec3& vel = state.velocities[idx];
+        Real vn = vel.dot(n);
+        if (vn < Real(0.0)) {
+            vel -= (Real(1.0) + restitution) * vn * n;
+        }
+    };
+
+    std::vector<ContactPair> contacts;
+    Collision::detect_all_collisions(mesh, state, contacts);
+
+    Real gap_limit = std::max(params.contact_gap_max, Real(1e-5));
+    for (const auto& contact : contacts) {
+        if (contact.gap > gap_limit) {
+            continue;
+        }
+
+        if (contact.type == ContactType::POINT_TRIANGLE) {
+            apply_impulse(contact.idx0, contact.normal);
+        } else if (contact.type == ContactType::EDGE_EDGE) {
+            apply_impulse(contact.idx0, contact.normal);
+            apply_impulse(contact.idx1, contact.normal);
+            apply_impulse(contact.idx2, -contact.normal);
+            apply_impulse(contact.idx3, -contact.normal);
+        } else if (contact.type == ContactType::WALL) {
+            apply_impulse(contact.idx0, contact.normal);
+        }
+    }
+
+    for (const auto& wall : constraints.walls) {
+        if (!wall.active) {
+            continue;
+        }
+        Vec3 normal = wall.normal;
+        Real norm = normal.norm();
+        if (norm < Real(1e-8)) {
+            continue;
+        }
+        normal /= norm;
+        for (size_t i = 0; i < state.positions.size(); ++i) {
+            Real signed_distance = normal.dot(state.positions[i]) - wall.offset;
+            if (signed_distance <= wall.gap + params.contact_gap_max) {
+                apply_impulse(static_cast<Index>(i), normal);
+            }
+        }
+    }
 }
 
 } // namespace ando_barrier

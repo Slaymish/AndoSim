@@ -103,6 +103,23 @@ class ANDO_PT_friction_panel(Panel):
         layout.prop(props, "friction_mu")
         layout.prop(props, "friction_epsilon")
 
+class ANDO_PT_damping_panel(Panel):
+    """Damping and restitution controls"""
+    bl_label = "Damping & Restitution"
+    bl_idname = "ANDO_PT_damping_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Ando Physics'
+    bl_parent_id = "ANDO_PT_main_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.ando_barrier
+
+        layout.prop(props, "velocity_damping")
+        layout.prop(props, "contact_restitution")
+
 class ANDO_PT_strain_limiting_panel(Panel):
     """Strain limiting settings panel"""
     bl_label = "Strain Limiting (Optional)"
@@ -410,6 +427,7 @@ classes = (
     ANDO_PT_main_panel,
     ANDO_PT_contact_panel,
     ANDO_PT_friction_panel,
+    ANDO_PT_damping_panel,
     ANDO_PT_strain_limiting_panel,
     ANDO_PT_material_panel,
     ANDO_PT_cache_panel,

@@ -42,6 +42,8 @@ class ANDO_OT_update_parameters(Operator):
         params.enable_friction = props.enable_friction
         params.friction_mu = props.friction_mu
         params.friction_epsilon = props.friction_epsilon
+        params.velocity_damping = props.velocity_damping
+        params.contact_restitution = props.contact_restitution
         params.enable_strain_limiting = props.enable_strain_limiting
         params.strain_limit = props.strain_limit
         params.strain_tau = props.strain_tau
