@@ -15,7 +15,7 @@ This document outlines the key milestones for turning the AndoSim physics engine
 - [~] Expose core physics parameters in Blender:
   - [x] Time stepping & solver controls (dt, β, Newton/PCG).
   - [x] Material properties (E, ν, density, thickness).
-  - [ ] Damping & restitution presets (pending material system).
+  - [ ] Damping & restitution presets (material presets ready; needs solver/parameter support).
 - [x] Enable single-frame simulation preview in the viewport (Step operator + realtime modal).
 - [~] Ensure correct unit scaling and axis alignment with Blender.
   - Z-up alignment handled; scaling audit still queued for validation pass.
@@ -25,27 +25,27 @@ This document outlines the key milestones for turning the AndoSim physics engine
 ## Phase 2: Reliability and Visual Feedback
 **Goal:** Make the simulation visually stable and understandable in the Blender viewport.
 
-- [ ] Continuous collision validation (no intersections, even for fast-moving objects).  
-  _Next:_ CCD hooks exist in core; expose toggles & add regression tests.
+- [x] Continuous collision validation (no intersections, even for fast-moving objects).
+  _Status:_ CCD toggles are exposed, metrics surface in the UI, and regression tests cover validator metrics.
 - [ ] Smooth elastic responses:
   - Visually accurate bounces.
   - Stable stacks and dense contacts.
-- [~] Real-time parameter feedback:
+- [x] Real-time parameter feedback:
   - [x] Sliders for stiffness, friction, solver tolerances.
-  - [ ] Immediate viewport response for parameter edits mid-sim (requires re-init hooks).
+  - [x] Immediate viewport response for parameter edits mid-sim (hot-reload operator updates params in-place).
 - [x] Debug overlays:
   - [x] Contact points, normals (type-colored) and pins visualized in viewport.
-  - [ ] Energy drift / constraint violation visualization.
+  - [x] Energy drift / constraint violation visualization.
 
 ---
 
 ## Phase 3: Usability and Workflow
 **Goal:** Make AndoSim intuitive and easy to use within typical Blender workflows.
 
-- [ ] Panel and UI design:
-  - Group parameters logically.
-  - Presets for common materials (metal, rubber, jelly, etc.).
-- [ ] Keyframe integration:
+- [x] Panel and UI design:
+  - [x] Group parameters logically.
+  - [x] Presets for common materials (metal, rubber, jelly, etc.).
+- [x] Keyframe integration:
   - Bake AndoSim simulations to Blender keyframes for animation.
 - [ ] Scene save/load support:
   - Persist AndoSim-specific simulation states across Blender sessions.
@@ -55,9 +55,9 @@ This document outlines the key milestones for turning the AndoSim physics engine
 ---
 
 ### Current Focus
-- Material preset system (rubber, metal, cloth, jelly) powering solver parameters.
-- Collision validation pass to surface CCD/debug metrics in the UI.
-- Documentation refresh once Phase 2 reliability work lands.
+- Damping & restitution parameter wiring for presets and solver hooks.
+- Smooth elastic response tuning and dense contact stability tests.
+- Documentation refresh now that Phase 2 reliability features are in place.
 
 ---
 
