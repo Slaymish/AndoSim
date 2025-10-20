@@ -5,7 +5,8 @@ Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic 
 ## Quick Start
 
 **For Blender Users:**
-- See [BLENDER_QUICK_START.md](docs/BLENDER_QUICK_START.md) for installation, usage, and tutorials
+- Start with the [GETTING_STARTED.md](docs/GETTING_STARTED.md) guide for installation and your first viewport simulation.
+- See [BLENDER_QUICK_START.md](docs/BLENDER_QUICK_START.md) for detailed panel descriptions, scripted demos, and advanced workflows.
 
 **For Developers:**
 - Build: `./build.sh` (requires CMake, Eigen3, pybind11)
