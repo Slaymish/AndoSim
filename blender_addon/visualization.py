@@ -332,36 +332,36 @@ def draw_debug_callback():
     if not props.show_gap_heatmap and not props.show_strain_overlay:
         gpu.state.line_width_set(2.0)
         gpu.state.point_size_set(8.0)
-        
+
         # Draw contact points grouped by type
         contact_groups = {}
         for contact in sim_state['debug_contacts']:
             ctype = contact.get('type', 'UNKNOWN')
             contact_groups.setdefault(ctype, []).append(contact)
 
-    for contact_type, contacts in contact_groups.items():
-        color = CONTACT_COLORS.get(contact_type, DEFAULT_CONTACT_COLOR)
+        for contact_type, contacts in contact_groups.items():
+            color = CONTACT_COLORS.get(contact_type, DEFAULT_CONTACT_COLOR)
 
-        positions = [Vector(contact['position']) for contact in contacts]
-        if positions:
-            batch = batch_for_shader(shader, 'POINTS', {"pos": positions})
-            shader.bind()
-            shader.uniform_float("color", color)
-            batch.draw(shader)
+            positions = [Vector(contact['position']) for contact in contacts]
+            if positions:
+                batch = batch_for_shader(shader, 'POINTS', {"pos": positions})
+                shader.bind()
+                shader.uniform_float("color", color)
+                batch.draw(shader)
 
-        # Draw contact normals as lines with half alpha for readability
-        lines = []
-        for contact in contacts:
-            start = Vector(contact['position'])
-            end = start + Vector(contact['normal']) * 0.05  # Scale normal for visibility
-            lines.extend([start, end])
+            # Draw contact normals as lines with half alpha for readability
+            lines = []
+            for contact in contacts:
+                start = Vector(contact['position'])
+                end = start + Vector(contact['normal']) * 0.05  # Scale normal for visibility
+                lines.extend([start, end])
 
-        if lines:
-            line_batch = batch_for_shader(shader, 'LINES', {"pos": lines})
-            shader.bind()
-            r, g, b, a = color
-            shader.uniform_float("color", (r, g, b, min(1.0, a * 0.6)))
-            line_batch.draw(shader)
+            if lines:
+                line_batch = batch_for_shader(shader, 'LINES', {"pos": lines})
+                shader.bind()
+                r, g, b, a = color
+                shader.uniform_float("color", (r, g, b, min(1.0, a * 0.6)))
+                line_batch.draw(shader)
     
     # Draw pinned vertices (blue dots)
     if sim_state['debug_pins']:

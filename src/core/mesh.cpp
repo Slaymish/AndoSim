@@ -1,6 +1,7 @@
 #include "mesh.h"
 #include <unordered_set>
 #include <algorithm>
+#include <cmath>
 
 namespace ando_barrier {
 
@@ -27,28 +28,48 @@ void Mesh::compute_rest_state() {
         const Vec3& v0 = vertices[tri.v[0]];
         const Vec3& v1 = vertices[tri.v[1]];
         const Vec3& v2 = vertices[tri.v[2]];
-        
+
         // Edge vectors
         Vec3 e1 = v1 - v0;
         Vec3 e2 = v2 - v0;
-        
+
+        const Real eps = static_cast<Real>(1e-12);
+        Real e1_len_sq = e1.squaredNorm();
+        Real e2_len_sq = e2.squaredNorm();
+
+        // Guard against degenerate triangles (zero area or duplicated vertices)
+        if (e1_len_sq < eps || e2_len_sq < eps) {
+            rest_areas[i] = static_cast<Real>(0.0);
+            Dm_inv[i] = Mat2::Zero();
+            continue;
+        }
+
         // Compute local 2D basis
         Vec3 n = e1.cross(e2);
-        Real area = n.norm() * 0.5;
+        Real normal_len = n.norm();
+
+        if (normal_len < eps) {
+            // e1 and e2 are nearly collinear → treat as degenerate face
+            rest_areas[i] = static_cast<Real>(0.0);
+            Dm_inv[i] = Mat2::Zero();
+            continue;
+        }
+
+        Real area = normal_len * static_cast<Real>(0.5);
         rest_areas[i] = area;
-        
-        n.normalize();
-        Vec3 t1 = e1.normalized();
-        Vec3 t2 = n.cross(t1);
-        
+
+        Vec3 n_unit = n / normal_len;
+        Vec3 t1 = e1 / std::sqrt(e1_len_sq);
+        Vec3 t2 = n_unit.cross(t1);
+
         // Project edges to 2D
         Mat2 Dm;
         Dm(0, 0) = e1.dot(t1);
         Dm(1, 0) = e1.dot(t2);
         Dm(0, 1) = e2.dot(t1);
         Dm(1, 1) = e2.dot(t2);
-        
-        // Invert for rest-state matrix
+
+        // Invert for rest-state matrix (safe since we filtered degeneracies)
         Dm_inv[i] = Dm.inverse();
     }
 }
