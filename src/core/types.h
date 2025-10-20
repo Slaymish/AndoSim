@@ -76,7 +76,11 @@ struct SimParams {
     bool enable_friction = false;
     Real friction_mu = 0.1;
     Real friction_epsilon = 1e-5;   // 0.01 mm
-    
+
+    // Global damping and restitution controls
+    Real velocity_damping = 0.0;     // Fraction of velocity removed each step
+    Real contact_restitution = 0.0;  // 0 = inelastic, 1 = fully elastic
+
     // Strain limiting (optional)
     bool enable_strain_limiting = false;
     Real strain_limit = 0.05;       // 5% default

@@ -54,6 +54,8 @@ PYBIND11_MODULE(ando_barrier_core, m) {
         .def_readwrite("enable_friction", &SimParams::enable_friction)
         .def_readwrite("friction_mu", &SimParams::friction_mu)
         .def_readwrite("friction_epsilon", &SimParams::friction_epsilon)
+        .def_readwrite("velocity_damping", &SimParams::velocity_damping)
+        .def_readwrite("contact_restitution", &SimParams::contact_restitution)
         .def_readwrite("enable_strain_limiting", &SimParams::enable_strain_limiting)
         .def_readwrite("strain_limit", &SimParams::strain_limit)
         .def_readwrite("strain_tau", &SimParams::strain_tau);

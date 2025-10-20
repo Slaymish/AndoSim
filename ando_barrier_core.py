@@ -36,6 +36,29 @@ class Material:
     thickness: float = 0.001
 
 
+@dataclass
+class SimParams:
+    """Lightweight simulation parameter container used by tests and tooling."""
+
+    dt: float = 0.002
+    beta_max: float = 0.25
+    min_newton_steps: int = 2
+    max_newton_steps: int = 8
+    pcg_tol: float = 1e-3
+    pcg_max_iters: int = 1000
+    contact_gap_max: float = 1e-3
+    wall_gap: float = 1e-3
+    enable_ccd: bool = True
+    enable_friction: bool = False
+    friction_mu: float = 0.1
+    friction_epsilon: float = 1e-5
+    velocity_damping: float = 0.0
+    contact_restitution: float = 0.0
+    enable_strain_limiting: bool = False
+    strain_limit: float = 0.05
+    strain_tau: float = 0.05
+
+
 class Mesh:
     """Simple triangle mesh wrapper."""
 
@@ -228,6 +251,7 @@ class AdaptiveTimestep:
 
 __all__ = [
     "Material",
+    "SimParams",
     "Mesh",
     "State",
     "Constraints",
