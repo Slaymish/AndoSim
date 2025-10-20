@@ -1,5 +1,6 @@
 # Build artifacts
-build/
+build/*
+!build/ando_barrier_core.py
 *.o
 *.so
 *.pyd
