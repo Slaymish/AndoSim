@@ -1,6 +1,21 @@
 import bpy
 from bpy.types import Panel
 
+
+def _count_sim_objects(context):
+    deformable = 0
+    rigid = 0
+    for obj in context.scene.objects:
+        props = getattr(obj, "ando_barrier_body", None)
+        if not props or not props.enabled:
+            continue
+        if props.role == 'DEFORMABLE':
+            deformable += 1
+        elif props.role == 'RIGID':
+            rigid += 1
+    return deformable, rigid
+
+
 class ANDO_PT_main_panel(Panel):
     """Main panel for Ando Barrier Physics"""
     bl_label = "Ando Barrier Physics"
@@ -50,6 +65,55 @@ class ANDO_PT_main_panel(Panel):
         box.label(text="PCG Solver", icon='SETTINGS')
         box.prop(props, "pcg_tol")
         box.prop(props, "pcg_max_iters")
+
+
+class ANDO_PT_scene_setup_panel(Panel):
+    """Panel guiding users through hybrid scene preparation."""
+
+    bl_label = "Simulation Setup"
+    bl_idname = "ANDO_PT_scene_setup_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Ando Physics'
+    bl_parent_id = "ANDO_PT_main_panel"
+
+    def draw(self, context):
+        layout = self.layout
+        deformable_count, rigid_count = _count_sim_objects(context)
+
+        summary = layout.row(align=True)
+        summary.label(text=f"Deformables: {deformable_count}", icon='MESH_GRID')
+        summary.label(text=f"Rigid Colliders: {rigid_count}", icon='CUBE')
+
+        obj = context.active_object
+        if obj and obj.type == 'MESH':
+            body_props = getattr(obj, "ando_barrier_body", None)
+            box = layout.box()
+            box.label(text=f"Active Mesh: {obj.name}", icon='MESH_DATA')
+            if body_props:
+                box.prop(body_props, "enabled", text="Include in Ando Simulation")
+                if body_props.enabled:
+                    box.prop(body_props, "role", expand=True)
+                    if body_props.role == 'RIGID':
+                        box.prop(body_props, "rigid_density")
+                        box.label(text="Rigid colliders follow the solver as a single solid body.", icon='INFO')
+                    else:
+                        box.label(text="Deformables use the material settings below.", icon='INFO')
+                else:
+                    box.label(text="Disabled meshes are ignored by the solver.", icon='INFO')
+            else:
+                box.label(text="Enable the add-on to configure simulation roles.", icon='ERROR')
+        else:
+            layout.label(text="Select a mesh to configure its role.", icon='INFO')
+
+        help_box = layout.box()
+        help_box.label(text="Hybrid Workflow", icon='QUESTION')
+        col = help_box.column(align=True)
+        col.label(text="1. Enable at least one deformable surface (cloth/soft body).")
+        col.label(text="2. Mark rigid meshes as colliders to catch and push the cloth.")
+        col.label(text="3. Initialize the real-time preview to sync rigid colliders.")
+        col.label(text="   (Rigid transforms are written back every frame.)")
+
 
 class ANDO_PT_contact_panel(Panel):
     """Contact settings panel"""
@@ -207,10 +271,19 @@ class ANDO_PT_realtime_panel(Panel):
         try:
             from . import operators
             sim_state = operators._sim_state
-            
+
             if sim_state['initialized']:
                 layout.label(text=f"Frame: {sim_state['frame']}", icon='TIME')
-                
+
+                rigid_objs = [obj for obj in sim_state.get('rigid_objects', []) if obj]
+                if rigid_objs:
+                    names = ", ".join(obj.name for obj in rigid_objs[:2])
+                    if len(rigid_objs) > 2:
+                        names += ", …"
+                    layout.label(text=f"Rigid colliders: {names}", icon='CUBE')
+                elif _count_sim_objects(context)[1] > 0:
+                    layout.label(text="Rigid colliders configured; reinitialize to sync.", icon='INFO')
+
                 # Play/pause button
                 row = layout.row(align=True)
                 play_icon = 'PAUSE' if sim_state['playing'] else 'PLAY'
@@ -252,7 +325,7 @@ class ANDO_PT_debug_panel(Panel):
         try:
             from . import operators, visualization
             sim_state = operators._sim_state
-            
+
             # Visualization toggle
             box = layout.box()
             box.label(text="Visualization", icon='HIDE_OFF')
@@ -266,6 +339,10 @@ class ANDO_PT_debug_panel(Panel):
                 col = box.column(align=True)
                 col.prop(context.scene.ando_barrier, "show_gap_heatmap", text="Gap Heatmap", toggle=True)
                 col.prop(context.scene.ando_barrier, "show_strain_overlay", text="Strain Overlay", toggle=True)
+
+            rigid_count = sim_state['stats'].get('num_rigid_bodies', 0)
+            if rigid_count:
+                layout.label(text=f"Rigid bodies in solver: {rigid_count}", icon='CUBE')
                 
                 # Show legend only if heatmaps are off
                 props = context.scene.ando_barrier
@@ -425,6 +502,7 @@ class ANDO_PT_debug_panel(Panel):
 
 classes = (
     ANDO_PT_main_panel,
+    ANDO_PT_scene_setup_panel,
     ANDO_PT_contact_panel,
     ANDO_PT_friction_panel,
     ANDO_PT_damping_panel,

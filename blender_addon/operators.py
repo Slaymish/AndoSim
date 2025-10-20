@@ -2,6 +2,7 @@ import bpy
 from bpy.types import Operator
 import numpy as np
 from collections import Counter
+from mathutils import Matrix, Vector
 
 
 def _default_stats():
@@ -36,7 +37,133 @@ def _default_stats():
         'max_relative_velocity': 0.0,
         'has_tunneling': False,
         'has_major_penetration': False,
+        'num_rigid_bodies': 0,
     }
+
+
+def _collect_rigid_bodies(context, exclude_obj=None, reporter=None):
+    """Convert Blender meshes tagged as rigid colliders into Ando rigid bodies."""
+
+    try:
+        import ando_barrier_core as abc
+    except ImportError:
+        if reporter:
+            reporter({'WARNING'}, "ando_barrier_core module not available; rigid bodies disabled")
+        return []
+
+    depsgraph = context.evaluated_depsgraph_get()
+    rigid_entries = []
+
+    for obj in context.scene.objects:
+        if obj.type != 'MESH' or obj is exclude_obj:
+            continue
+
+        obj_props = getattr(obj, "ando_barrier_body", None)
+        if not obj_props or not obj_props.enabled or obj_props.role != 'RIGID':
+            continue
+
+        obj_eval = obj.evaluated_get(depsgraph)
+        mesh_eval = obj_eval.to_mesh()
+
+        if mesh_eval is None:
+            if reporter:
+                reporter({'WARNING'}, f"Rigid collider '{obj.name}' has no mesh data; skipped")
+            continue
+
+        mesh_eval.calc_loop_triangles()
+        if not mesh_eval.loop_triangles:
+            if reporter:
+                reporter({'WARNING'}, f"Rigid collider '{obj.name}' has no triangles; skipped")
+            obj_eval.to_mesh_clear()
+            continue
+
+        world_matrix = obj_eval.matrix_world
+        vertices = np.array([world_matrix @ v.co for v in mesh_eval.vertices], dtype=np.float32)
+        rest_vertices = np.array([world_matrix @ v.co for v in mesh_eval.vertices], dtype=np.float64)
+        triangles = np.array(
+            [tuple(loop.vertex_index for loop in tri.loops) for tri in mesh_eval.loop_triangles],
+            dtype=np.int32,
+        )
+        obj_eval.to_mesh_clear()
+
+        if len(triangles) == 0:
+            if reporter:
+                reporter({'WARNING'}, f"Rigid collider '{obj.name}' has zero triangle faces; skipped")
+            continue
+
+        body = abc.RigidBody()
+        body.initialize(vertices, triangles, obj_props.rigid_density)
+
+        rigid_entries.append({
+            'object': obj,
+            'body': body,
+            'rest_vertices': rest_vertices,
+            'initial_matrix': obj.matrix_world.copy(),
+            'name': obj.name,
+        })
+
+    return rigid_entries
+
+
+def _compute_rigid_transform(rest_vertices, new_vertices):
+    """Find best-fit rigid transform that maps rest vertices to new vertices."""
+
+    if len(rest_vertices) < 3 or len(new_vertices) < 3:
+        return None, None
+
+    rest = np.asarray(rest_vertices, dtype=np.float64)
+    new = np.asarray(new_vertices, dtype=np.float64)
+
+    rest_center = rest.mean(axis=0)
+    new_center = new.mean(axis=0)
+
+    rest_zero = rest - rest_center
+    new_zero = new - new_center
+
+    H = rest_zero.T @ new_zero
+    try:
+        U, _S, Vt = np.linalg.svd(H)
+    except np.linalg.LinAlgError:
+        return None, None
+
+    R = Vt.T @ U.T
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+
+    t = new_center - R @ rest_center
+    return R, t
+
+
+def _update_rigid_objects(rigid_entries):
+    """Update Blender object transforms to follow simulated rigid bodies."""
+
+    if not rigid_entries:
+        return
+
+    for entry in rigid_entries:
+        body = entry['body']
+        obj = entry['object']
+
+        try:
+            new_vertices = np.array(body.world_vertices(), dtype=np.float64)
+        except AttributeError:
+            continue
+
+        if new_vertices.size == 0:
+            continue
+
+        transform = _compute_rigid_transform(entry['rest_vertices'], new_vertices)
+        if not transform or transform[0] is None:
+            continue
+
+        R, t = transform
+        rot_mat = Matrix(((R[0, 0], R[0, 1], R[0, 2]),
+                          (R[1, 0], R[1, 1], R[1, 2]),
+                          (R[2, 0], R[2, 1], R[2, 2])))
+        rot_mat.resize_4x4()
+        rot_mat.translation = Vector((t[0], t[1], t[2]))
+        obj.matrix_world = rot_mat
 
 
 # Global simulation state for real-time preview
@@ -51,6 +178,9 @@ _sim_state = {
     'debug_contacts': [],  # List of per-contact dicts
     'debug_pins': [],  # List of pinned vertex positions
     'stats': _default_stats(),
+    'rigid_entries': [],
+    'rigids': [],
+    'rigid_objects': [],
 }
 
 class ANDO_OT_bake_simulation(Operator):
@@ -72,7 +202,11 @@ class ANDO_OT_bake_simulation(Operator):
         if not obj or obj.type != 'MESH':
             self.report({'ERROR'}, "No mesh object selected")
             return {'CANCELLED'}
-        
+
+        obj_role = getattr(obj, "ando_barrier_body", None)
+        if obj_role and (not obj_role.enabled or obj_role.role != 'DEFORMABLE'):
+            self.report({'WARNING'}, "Active mesh is not tagged as a deformable body in Simulation Setup panel.")
+
         self.report({'INFO'}, f"Baking simulation: {obj.name}")
         
         # Get mesh data
@@ -149,6 +283,15 @@ class ANDO_OT_bake_simulation(Operator):
         else:
             self.report({'WARNING'}, "No 'ando_pins' vertex group found. Use 'Add Pin Constraint' button to create pins.")
         
+        # Collect hybrid rigid bodies for collision coupling
+        rigid_entries = _collect_rigid_bodies(context, exclude_obj=obj, reporter=self.report)
+        rigid_bodies = [entry['body'] for entry in rigid_entries]
+        if rigid_entries:
+            rigid_names = ", ".join(entry['name'] for entry in rigid_entries[:3])
+            if len(rigid_entries) > 3:
+                rigid_names += ", …"
+            self.report({'INFO'}, f"Using rigid colliders: {rigid_names}")
+
         # Add ground plane if enabled
         if props.enable_ground_plane:
             ground_normal = np.array([0.0, 0.0, 1.0], dtype=np.float32)  # Blender Z-up
@@ -203,7 +346,10 @@ class ANDO_OT_bake_simulation(Operator):
                     state.apply_gravity(gravity, params.dt)
                     
                     # Take physics step
-                    abc.Integrator.step(mesh, state, constraints, params)
+                    if rigid_bodies:
+                        abc.Integrator.step(mesh, state, constraints, params, rigid_bodies)
+                    else:
+                        abc.Integrator.step(mesh, state, constraints, params)
                 
                 # Update shape key with new positions
                 positions = state.get_positions()
@@ -339,7 +485,11 @@ class ANDO_OT_init_realtime_simulation(Operator):
         if not obj or obj.type != 'MESH':
             self.report({'ERROR'}, "No mesh object selected")
             return {'CANCELLED'}
-        
+
+        obj_role = getattr(obj, "ando_barrier_body", None)
+        if obj_role and (not obj_role.enabled or obj_role.role != 'DEFORMABLE'):
+            self.report({'WARNING'}, "Active mesh is not tagged as a deformable body in Simulation Setup panel.")
+
         # Get mesh data
         mesh_data = obj.data
         vertices = np.array([v.co for v in mesh_data.vertices], dtype=np.float32)
@@ -409,7 +559,16 @@ class ANDO_OT_init_realtime_simulation(Operator):
         if props.enable_ground_plane:
             ground_normal = np.array([0.0, 0.0, 1.0], dtype=np.float32)
             constraints.add_wall(ground_normal, props.ground_plane_height, params.wall_gap)
-        
+
+        # Discover rigid colliders participating in hybrid simulation
+        rigid_entries = _collect_rigid_bodies(context, exclude_obj=obj, reporter=self.report)
+        rigid_bodies = [entry['body'] for entry in rigid_entries]
+        if rigid_entries:
+            names = ", ".join(entry['name'] for entry in rigid_entries[:3])
+            if len(rigid_entries) > 3:
+                names += ", …"
+            self.report({'INFO'}, f"Linked rigid colliders: {names}")
+
         # Store in global state
         _sim_state['mesh'] = mesh
         _sim_state['state'] = state
@@ -421,7 +580,11 @@ class ANDO_OT_init_realtime_simulation(Operator):
         _sim_state['stats'] = _default_stats()
         _sim_state['debug_pins'] = pin_positions_world
         _sim_state['stats']['num_pins'] = num_pins_added
-        
+        _sim_state['rigid_entries'] = rigid_entries
+        _sim_state['rigids'] = rigid_bodies
+        _sim_state['rigid_objects'] = [entry['object'] for entry in rigid_entries]
+        _sim_state['stats']['num_rigid_bodies'] = len(rigid_entries)
+
         self.report({'INFO'}, f"Initialized: {len(vertices)} vertices, {num_pins_added} pins")
         return {'FINISHED'}
 
@@ -455,7 +618,8 @@ class ANDO_OT_step_simulation(Operator):
         state = _sim_state['state']
         constraints = _sim_state['constraints']
         params = _sim_state['params']
-        
+        rigid_bodies = _sim_state.get('rigids', [])
+
         # Adaptive timestepping (if enabled)
         props = context.scene.ando_barrier
         if props.enable_adaptive_dt:
@@ -490,9 +654,12 @@ class ANDO_OT_step_simulation(Operator):
         start_time = time.time()
         for step in range(steps_per_frame):
             state.apply_gravity(gravity, params.dt)
-            abc.Integrator.step(mesh, state, constraints, params)
+            if rigid_bodies:
+                abc.Integrator.step(mesh, state, constraints, params, rigid_bodies)
+            else:
+                abc.Integrator.step(mesh, state, constraints, params)
         end_time = time.time()
-        
+
         # Compute energy diagnostics
         energy_diag = abc.EnergyTracker.compute(mesh, state, constraints, params)
         
@@ -530,10 +697,14 @@ class ANDO_OT_step_simulation(Operator):
         positions = state.get_positions()
         for i, v in enumerate(obj.data.vertices):
             v.co = positions[i]
-        
+
         # Mark mesh as updated
         obj.data.update()
-        
+
+        # Update rigid body transforms in Blender
+        _update_rigid_objects(_sim_state.get('rigid_entries', []))
+        _sim_state['rigid_objects'] = [entry['object'] for entry in _sim_state.get('rigid_entries', [])]
+
         _sim_state['frame'] += 1
         
         # Update statistics
@@ -542,7 +713,10 @@ class ANDO_OT_step_simulation(Operator):
         _sim_state['stats']['num_pins'] = len(_sim_state['debug_pins'])
         
         # Collect contact data for visualization and statistics
-        contacts = abc.Integrator.compute_contacts(mesh, state)
+        if rigid_bodies:
+            contacts = abc.Integrator.compute_contacts(mesh, state, rigid_bodies)
+        else:
+            contacts = abc.Integrator.compute_contacts(mesh, state)
         
         # Compute collision validation metrics
         collision_metrics = abc.CollisionValidator.compute_metrics(
@@ -636,7 +810,11 @@ class ANDO_OT_reset_realtime_simulation(Operator):
         _sim_state['debug_contacts'] = []
         _sim_state['debug_pins'] = []
         _sim_state['stats'] = _default_stats()
-        
+        rigid_entries = _sim_state.get('rigid_entries', [])
+        _sim_state['rigid_entries'] = []
+        _sim_state['rigids'] = []
+        _sim_state['rigid_objects'] = []
+
         # Reset mesh to original positions
         obj = context.active_object
         if obj and obj.type == 'MESH':
@@ -646,7 +824,11 @@ class ANDO_OT_reset_realtime_simulation(Operator):
                 for i, v in enumerate(obj.data.vertices):
                     v.co = basis.data[i].co
                 obj.data.update()
-        
+
+        # Restore rigid colliders to their starting transforms
+        for entry in rigid_entries:
+            entry['object'].matrix_world = entry['initial_matrix']
+
         self.report({'INFO'}, "Real-time simulation reset")
         return {'FINISHED'}
 
