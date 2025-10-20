@@ -77,8 +77,8 @@ This document outlines the key milestones for turning the AndoSim physics engine
 ## Phase 5: Documentation & Showcase
 **Goal:** Make the add-on approachable and appealing to new users.
 
-- [ ] Write a “Getting Started” guide:
-  - Quick setup, parameter explanation, example scene.
+- [x] Write a “Getting Started” guide:
+  - Quick setup, parameter explanation, example scene. See [`docs/GETTING_STARTED.md`](../GETTING_STARTED.md).
 - [ ] Include screenshots / GIFs demonstrating unique features.
 - [ ] Provide canonical test scenes for users to try immediately.
 - [ ] Encourage community contributions:
