@@ -5,6 +5,24 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-10-20
+
+### Added
+- **Hybrid rigid collider support**: Core solver now accepts rigid bodies alongside cloth, exporting a Python `RigidBody` API and `Integrator` helpers so cloth can push animated colliders (src/core/rigid_body.*, src/core/integrator.*, src/py/bindings.cpp, tests/test_hybrid.cpp).
+- **Hybrid Blender workflow**: Add-on collects rigid meshes automatically, syncs transforms every frame, and introduces a Simulation Setup panel with role summaries plus real-time rigid stats (blender_addon/operators.py, blender_addon/ui.py).
+- **Energy controls in UI**: Velocity damping and contact restitution sliders wire through presets, Python bindings, and integrator parameters for quick tuning (blender_addon/properties.py, blender_addon/ui.py, ando_barrier_core.py).
+
+### Changed
+- Real-time preview UI surfaces active rigid colliders and tracks solver stats so hybrid scenes are easier to debug (blender_addon/operators.py).
+
+### Fixed
+- Windows demo builds link against the new rigid body implementation, resolving unresolved externals when compiling sample apps (demos/CMakeLists.txt).
+
+### Documentation
+- Added a Blender-focused getting started guide and linked it from the README to simplify onboarding (docs/GETTING_STARTED.md, README.md).
+
+---
+
 ## [1.0.0] - 2025-10-19
 
 ### Added - Phase 4 Core Features

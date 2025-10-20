@@ -64,7 +64,7 @@ This document outlines the key milestones for turning the AndoSim physics engine
 ## Phase 4: Advanced Features / “Wow” Factor
 **Goal:** Deliver features that make AndoSim clearly different from Blender’s built-in physics.
 
-- [ ] Hybrid rigid + elastic simulation:
+- [X] Hybrid rigid + elastic simulation:
   - Simulate metal, soft bodies, and mixed stacks in the same solver.
 - [ ] Optional GPU acceleration or batched simulation (if feasible).
 - [ ] Canonical test scenes:
