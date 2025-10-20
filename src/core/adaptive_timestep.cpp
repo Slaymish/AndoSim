@@ -81,29 +81,52 @@ Real AdaptiveTimestep::smooth_dt_change(
 
 Real AdaptiveTimestep::compute_min_edge_length(const Mesh& mesh) {
     if (mesh.edges.empty()) {
-        // Degenerate mesh (no edges) → return conservative minimum length
         return kMinEdgeLengthThreshold;
     }
 
     Real min_edge_sq = std::numeric_limits<Real>::max();
-    
+    bool found_valid_edge = false;
+
+    const size_t num_vertices = mesh.vertices.size();
+
     // Iterate over all edges
     for (const auto& edge : mesh.edges) {
-        int v0 = edge.v[0];
-        int v1 = edge.v[1];
-        
+        const Index v0 = edge.v[0];
+        const Index v1 = edge.v[1];
+
+        // Skip edges that reference invalid vertices
+        if (v0 < 0 || v1 < 0 ||
+            static_cast<size_t>(v0) >= num_vertices ||
+            static_cast<size_t>(v1) >= num_vertices) {
+            continue;
+        }
+
         // Get vertex positions
-        Vec3 p0 = mesh.vertices[v0];
-        Vec3 p1 = mesh.vertices[v1];
-        
+        const Vec3& p0 = mesh.vertices[v0];
+        const Vec3& p1 = mesh.vertices[v1];
+
         // Compute squared edge length
-        Real edge_length_sq = (p1 - p0).squaredNorm();
-        
+        const Real edge_length_sq = (p1 - p0).squaredNorm();
+
+        if (!std::isfinite(edge_length_sq)) {
+            continue;
+        }
+
         min_edge_sq = std::min(min_edge_sq, edge_length_sq);
+        found_valid_edge = true;
     }
-    
-    // Return length (not squared)
-    return std::sqrt(std::max(min_edge_sq, static_cast<Real>(0.0)));
+
+    if (!found_valid_edge) {
+        return kMinEdgeLengthThreshold;
+    }
+
+    const Real min_edge = std::sqrt(std::max(min_edge_sq, static_cast<Real>(0.0)));
+
+    if (!std::isfinite(min_edge)) {
+        return kMinEdgeLengthThreshold;
+    }
+
+    return min_edge;
 }
 
 Real AdaptiveTimestep::compute_max_velocity(const VecX& velocities) {
