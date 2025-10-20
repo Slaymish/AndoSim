@@ -32,7 +32,7 @@ public:
         const State& state,
         Real g_max,
         Real k_bar,
-        SparseMatrix& hessian  // Add 12×12 block
+        std::vector<Triplet>& triplets  // Append 12×12 block contributions
     );
     
     // Pin constraint derivatives: gap = ||x_i - p_target||
@@ -51,7 +51,7 @@ public:
         const State& state,
         Real g_max,
         Real k_bar,
-        SparseMatrix& hessian  // Add 3×3 block
+        std::vector<Triplet>& triplets  // Append 3×3 block
     );
     
     // Wall constraint derivatives: gap = n·x - offset
@@ -72,7 +72,7 @@ public:
         const State& state,
         Real g_max,
         Real k_bar,
-        SparseMatrix& hessian
+        std::vector<Triplet>& triplets
     );
 
 private:

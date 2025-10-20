@@ -226,7 +226,8 @@ void Integrator::compute_gradient(
             // Extract H_block for vertex involved in contact
             Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
+                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
+                contact.normal, H_block, params.min_gap
             );
             
             // Add barrier gradient
@@ -242,7 +243,8 @@ void Integrator::compute_gradient(
 
         Vec3 offset = state.positions[pin.vertex_idx] - pin.target_position;
         Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, pin.vertex_idx);
-        Real k_bar = Stiffness::compute_pin_stiffness(state.masses[pin.vertex_idx], dt, offset, H_block);
+        Real k_bar = Stiffness::compute_pin_stiffness(state.masses[pin.vertex_idx], dt,
+                                                     offset, H_block, params.min_gap);
 
         Barrier::compute_pin_gradient(pin.vertex_idx, pin.target_position, state,
                                       params.contact_gap_max, k_bar, gradient);
@@ -255,7 +257,8 @@ void Integrator::compute_gradient(
         // For each vertex, compute wall stiffness and gradient contribution
         for (Index vi = 0; vi < static_cast<Index>(state.num_vertices()); ++vi) {
             Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, vi);
-            Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap, wall.normal, H_block);
+            Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap,
+                                                           wall.normal, H_block, params.min_gap);
 
             Barrier::compute_wall_gradient(vi, wall.normal, wall.offset, state,
                                            params.contact_gap_max, k_bar, gradient);
@@ -278,7 +281,8 @@ void Integrator::compute_gradient(
             // Estimate normal force from contact stiffness and gap
             Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
             Real k_contact = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
+                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
+                contact.normal, H_block, params.min_gap
             );
             Real normal_force_estimate = k_contact * std::abs(contact.gap);
             
@@ -356,24 +360,17 @@ void Integrator::assemble_system_matrix(
             // Extract H_block for accurate stiffness
             Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
+                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
+                contact.normal, H_block, params.min_gap
             );
-            
-            // Add barrier Hessian (will be sparse, 4×4 block of 3×3 matrices)
-            SparseMatrix barrier_hessian;
+
+            // Append barrier Hessian contributions directly
             Barrier::compute_contact_hessian(contact, state,
                                             params.contact_gap_max, k_bar,
-                                            barrier_hessian);
-            
-            // Add barrier Hessian triplets
-            for (int k = 0; k < barrier_hessian.outerSize(); ++k) {
-                for (SparseMatrix::InnerIterator it(barrier_hessian, k); it; ++it) {
-                    triplets.push_back(Triplet(it.row(), it.col(), it.value()));
-                }
-            }
+                                            triplets);
         }
     }
-    
+
     // 4. Pin and wall Hessians
     // Pins
     for (const auto& pin : constraints.pins) {
@@ -383,17 +380,10 @@ void Integrator::assemble_system_matrix(
         Mat3 H_block = Stiffness::extract_hessian_block(H_base, pin.vertex_idx);
         Real k_bar = Stiffness::compute_pin_stiffness(state.masses[pin.vertex_idx], dt,
                                                      state.positions[pin.vertex_idx] - pin.target_position,
-                                                     H_block);
+                                                     H_block, params.min_gap);
 
-        SparseMatrix pin_hess;
         Barrier::compute_pin_hessian(pin.vertex_idx, pin.target_position, state,
-                                     params.contact_gap_max, k_bar, pin_hess);
-
-        for (int k = 0; k < pin_hess.outerSize(); ++k) {
-            for (SparseMatrix::InnerIterator it(pin_hess, k); it; ++it) {
-                triplets.push_back(Triplet(it.row(), it.col(), it.value()));
-            }
-        }
+                                     params.contact_gap_max, k_bar, triplets);
     }
 
     // Walls
@@ -402,17 +392,11 @@ void Integrator::assemble_system_matrix(
 
         for (Index vi = 0; vi < static_cast<Index>(state.num_vertices()); ++vi) {
             Mat3 H_block = Stiffness::extract_hessian_block(H_base, vi);
-            Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap, wall.normal, H_block);
+            Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap,
+                                                           wall.normal, H_block, params.min_gap);
 
-            SparseMatrix wall_hess;
             Barrier::compute_wall_hessian(vi, wall.normal, wall.offset, state,
-                                          params.contact_gap_max, k_bar, wall_hess);
-
-            for (int k = 0; k < wall_hess.outerSize(); ++k) {
-                for (SparseMatrix::InnerIterator it(wall_hess, k); it; ++it) {
-                    triplets.push_back(Triplet(it.row(), it.col(), it.value()));
-                }
-            }
+                                          params.contact_gap_max, k_bar, triplets);
         }
     }
 
@@ -433,7 +417,8 @@ void Integrator::assemble_system_matrix(
             // F_n ≈ k_contact * gap (simplified for friction stiffness)
             Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
             Real k_contact = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, contact.normal, H_block
+                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
+                contact.normal, H_block, params.min_gap
             );
             Real normal_force_estimate = k_contact * std::abs(contact.gap);
             

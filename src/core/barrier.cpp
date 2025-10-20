@@ -1,5 +1,7 @@
 #include "barrier.h"
 #include <cmath>
+#include <algorithm>
+#include <limits>
 
 namespace ando_barrier {
 
@@ -8,7 +10,8 @@ Real Barrier::compute_energy(Real g, Real g_max, Real k) {
     
     // V_weak(g, ḡ, k) = -(k/2)(g-ḡ)² ln(g/ḡ)
     Real diff = g - g_max;
-    Real ln_ratio = std::log(g / g_max);
+    Real g_safe = std::max(g, Real(1e-12));
+    Real ln_ratio = std::log(g_safe / g_max);
     
     return -0.5 * k * diff * diff * ln_ratio;
 }
@@ -18,7 +21,8 @@ Real Barrier::compute_gradient(Real g, Real g_max, Real k) {
     
     // d/dg V_weak = -k * (g - ḡ) * ln(g/ḡ) - k/2 * (g - ḡ)² / g
     Real diff = g - g_max;
-    Real ln_ratio = std::log(g / g_max);
+    Real g_safe = std::max(g, Real(1e-12));
+    Real ln_ratio = std::log(g_safe / g_max);
     
     return -k * diff * ln_ratio - 0.5 * k * diff * diff / g;
 }
@@ -28,9 +32,10 @@ Real Barrier::compute_hessian(Real g, Real g_max, Real k) {
     
     // d²/dg² V_weak = -k·ln(g/ḡ) - 2k(g-ḡ)/g + (k/2)(g-ḡ)²/g²
     Real diff = g - g_max;
-    Real ln_ratio = std::log(g / g_max);
-    
-    return -k * ln_ratio - 2.0 * k * diff / g + 0.5 * k * diff * diff / (g * g);
+    Real g_safe = std::max(g, Real(1e-12));
+    Real ln_ratio = std::log(g_safe / g_max);
+
+    return -k * ln_ratio - 2.0 * k * diff / g_safe + 0.5 * k * diff * diff / (g_safe * g_safe);
 }
 
 bool Barrier::in_domain(Real g, Real g_max) {
@@ -66,15 +71,15 @@ void Barrier::compute_gap_gradient_point_triangle(
     
     Real denom = d00 * d11 - d01 * d01;
     Real v = 0.0, w = 0.0;
-    
+
     if (std::abs(denom) > 1e-10) {
         v = (d11 * d20 - d01 * d21) / denom;
         w = (d00 * d21 - d01 * d20) / denom;
     }
-    
+
     // Clamp to valid barycentric range
-    v = std::clamp(v, 0.0f, 1.0f);
-    w = std::clamp(w, 0.0f, 1.0f);
+    v = std::clamp(v, Real(0.0), Real(1.0));
+    w = std::clamp(w, Real(0.0), Real(1.0));
     if (v + w > 1.0) {
         Real sum = v + w;
         v /= sum;
@@ -109,8 +114,16 @@ void Barrier::compute_contact_gradient(
         const Vec3& a = state.positions[contact.idx1];
         const Vec3& b = state.positions[contact.idx2];
         const Vec3& c = state.positions[contact.idx3];
-        
-        compute_gap_gradient_point_triangle(p, a, b, c, contact.normal, 
+
+        Vec3 normal = contact.normal;
+        Real n_norm = normal.norm();
+        if (n_norm > Real(1e-9)) {
+            normal /= n_norm;
+        } else {
+            normal = Vec3(0.0, 1.0, 0.0);
+        }
+
+        compute_gap_gradient_point_triangle(p, a, b, c, normal,
                                            contact.gap, gap_grads);
         
         // Add contributions: ∂V/∂x_i = (∂V/∂g)(∂g/∂x_i)
@@ -122,7 +135,15 @@ void Barrier::compute_contact_gradient(
     else if (contact.type == ContactType::EDGE_EDGE) {
         // For edge-edge: gradient is along the contact normal direction
         // Vertices on edge 0 get +n, vertices on edge 1 get -n
-        Vec3 force = dV_dg * contact.normal;
+        Vec3 normal = contact.normal;
+        Real n_norm = normal.norm();
+        if (n_norm > Real(1e-9)) {
+            normal /= n_norm;
+        } else {
+            normal = Vec3(0.0, 1.0, 0.0);
+        }
+
+        Vec3 force = dV_dg * normal;
         gradient.segment<3>(contact.idx0 * 3) += force * 0.5;
         gradient.segment<3>(contact.idx1 * 3) += force * 0.5;
         gradient.segment<3>(contact.idx2 * 3) -= force * 0.5;
@@ -154,7 +175,7 @@ void Barrier::compute_contact_hessian(
     const State& state,
     Real g_max,
     Real k_bar,
-    SparseMatrix& hessian) {
+    std::vector<Triplet>& triplets) {
     
     if (!in_domain(contact.gap, g_max)) return;
     
@@ -171,10 +192,18 @@ void Barrier::compute_contact_hessian(
         const Vec3& a = state.positions[contact.idx1];
         const Vec3& b = state.positions[contact.idx2];
         const Vec3& c = state.positions[contact.idx3];
-        
-        compute_gap_gradient_point_triangle(p, a, b, c, contact.normal,
+
+        Vec3 normal = contact.normal;
+        Real n_norm = normal.norm();
+        if (n_norm > Real(1e-9)) {
+            normal /= n_norm;
+        } else {
+            normal = Vec3(0.0, 1.0, 0.0);
+        }
+
+        compute_gap_gradient_point_triangle(p, a, b, c, normal,
                                            contact.gap, gap_grads);
-        compute_gap_hessian_point_triangle(p, a, b, c, contact.normal,
+        compute_gap_hessian_point_triangle(p, a, b, c, normal,
                                           contact.gap, gap_hess);
         
         // Build 12×12 Hessian block: ∂²V/∂x² = (∂²V/∂g²)(∂g/∂x)(∂g/∂x)ᵀ + (∂V/∂g)(∂²g/∂x²)
@@ -184,16 +213,18 @@ void Barrier::compute_contact_hessian(
             for (int j = 0; j < 4; ++j) {
                 // First term: (∂²V/∂g²)(∂g/∂x_i)(∂g/∂x_j)ᵀ
                 Mat3 H_ij = d2V_dg2 * gap_grads[i] * gap_grads[j].transpose();
-                
+
                 // Second term: (∂V/∂g)(∂²g/∂x_i∂x_j)
                 H_ij += dV_dg * gap_hess[i][j];
-                
+
                 // Add to sparse matrix using triplet insertion
                 for (int row = 0; row < 3; ++row) {
                     for (int col = 0; col < 3; ++col) {
+                        Real value = H_ij(row, col);
+                        if (std::abs(value) < Real(1e-12)) continue;
                         int global_row = indices[i] * 3 + row;
                         int global_col = indices[j] * 3 + col;
-                        // Actual assembly handled by caller via triplets
+                        triplets.emplace_back(global_row, global_col, value);
                     }
                 }
             }
@@ -229,7 +260,7 @@ void Barrier::compute_pin_hessian(
     const State& state,
     Real g_max,
     Real k_bar,
-    SparseMatrix& hessian) {
+    std::vector<Triplet>& triplets) {
     
     Vec3 diff = state.positions[vertex_idx] - pin_target;
     Real gap = diff.norm();
@@ -249,10 +280,12 @@ void Barrier::compute_pin_hessian(
     Mat3 H = d2V_dg2 * (n * n.transpose()) + dV_dg * gap_hess;
     
     // Add to sparse matrix
+    int base = vertex_idx * 3;
     for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
-            int global_idx = vertex_idx * 3;
-            // hessian.coeffRef(global_idx + row, global_idx + col) += H(row, col);
+            Real value = H(row, col);
+            if (std::abs(value) < Real(1e-12)) continue;
+            triplets.emplace_back(base + row, base + col, value);
         }
     }
 }
@@ -267,14 +300,22 @@ void Barrier::compute_wall_gradient(
     Real k_bar,
     VecX& gradient) {
     
-    Real gap = wall_normal.dot(state.positions[vertex_idx]) - wall_offset;
-    
+    Vec3 normal = wall_normal;
+    Real n_norm = normal.norm();
+    if (n_norm > Real(1e-9)) {
+        normal /= n_norm;
+    } else {
+        normal = Vec3(0.0, 1.0, 0.0);
+    }
+
+    Real gap = normal.dot(state.positions[vertex_idx]) - wall_offset;
+
     if (!in_domain(gap, g_max)) return;
-    
+
     // ∂g/∂x = n (wall normal)
     // ∂V/∂x = (∂V/∂g) * n
     Real dV_dg = compute_gradient(gap, g_max, k_bar);
-    gradient.segment<3>(vertex_idx * 3) += dV_dg * wall_normal;
+    gradient.segment<3>(vertex_idx * 3) += dV_dg * normal;
 }
 
 void Barrier::compute_wall_hessian(
@@ -284,22 +325,31 @@ void Barrier::compute_wall_hessian(
     const State& state,
     Real g_max,
     Real k_bar,
-    SparseMatrix& hessian) {
+    std::vector<Triplet>& triplets) {
     
-    Real gap = wall_normal.dot(state.positions[vertex_idx]) - wall_offset;
-    
+    Vec3 normal = wall_normal;
+    Real n_norm = normal.norm();
+    if (n_norm > Real(1e-9)) {
+        normal /= n_norm;
+    } else {
+        normal = Vec3(0.0, 1.0, 0.0);
+    }
+
+    Real gap = normal.dot(state.positions[vertex_idx]) - wall_offset;
+
     if (!in_domain(gap, g_max)) return;
-    
+
     // For wall: ∂²g/∂x² = 0 (linear gap function)
     // So: ∂²V/∂x² = (∂²V/∂g²) * n⊗n
     Real d2V_dg2 = compute_hessian(gap, g_max, k_bar);
-    Mat3 H = d2V_dg2 * (wall_normal * wall_normal.transpose());
-    
-    // Add to sparse matrix
+    Mat3 H = d2V_dg2 * (normal * normal.transpose());
+
+    int base = vertex_idx * 3;
     for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
-            int global_idx = vertex_idx * 3;
-            // hessian.coeffRef(global_idx + row, global_idx + col) += H(row, col);
+            Real value = H(row, col);
+            if (std::abs(value) < Real(1e-12)) continue;
+            triplets.emplace_back(base + row, base + col, value);
         }
     }
 }

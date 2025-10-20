@@ -17,9 +17,10 @@ public:
         Real mass,              // Vertex or average mass
         Real dt,                // Time step
         Real gap,               // Current gap distance
+        Real g_max,             // Barrier activation distance (ĝ)
         const Vec3& normal,     // Contact normal
         const Mat3& H_block,    // Elasticity Hessian 3×3 block for this vertex
-        Real gap_threshold = 1e-4  // Threshold for takeover term
+        Real min_gap            // Numerical minimum gap
     );
     
     // Pin stiffness (Eq. 6): k_i = m_i/Δt² + w_i·(H_i w_i)
@@ -28,15 +29,17 @@ public:
         Real mass,              // Vertex mass
         Real dt,                // Time step
         const Vec3& offset,     // w_i = current_pos - pin_target
-        const Mat3& H_block     // Elasticity Hessian 3×3 block for this vertex
+        const Mat3& H_block,    // Elasticity Hessian 3×3 block for this vertex
+        Real min_gap            // Minimum separation used for takeover
     );
     
     // Wall stiffness (Eq. 7): k_wall = m_i/(g_wall)² + n_wall·(H_i n_wall)
     static Real compute_wall_stiffness(
         Real mass,              // Vertex mass
-        Real gap,               // Wall gap distance
+        Real wall_gap,          // Prescribed wall gap distance
         const Vec3& normal,     // Wall normal
-        const Mat3& H_block     // Elasticity Hessian 3×3 block for this vertex
+        const Mat3& H_block,    // Elasticity Hessian 3×3 block for this vertex
+        Real min_gap            // Minimum separation used for takeover
     );
     
     // Compute all contact stiffnesses for current constraints
