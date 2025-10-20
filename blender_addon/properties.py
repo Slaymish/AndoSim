@@ -464,6 +464,46 @@ class AndoBarrierSceneProperties(PropertyGroup):
         update=_mark_scene_custom,
     )
 
+
+class AndoBarrierObjectProperties(PropertyGroup):
+    """Per-object settings describing how meshes participate in the solver."""
+
+    enabled: BoolProperty(
+        name="Include in Ando Simulation",
+        description="Enable to have this mesh participate in the Ando solver",
+        default=False,
+    )
+
+    role: EnumProperty(
+        name="Simulation Role",
+        description="How this mesh is treated by the hybrid solver",
+        items=(
+            (
+                'DEFORMABLE',
+                "Deformable Surface",
+                "Simulate as cloth/soft body using barrier-based elasticity",
+            ),
+            (
+                'RIGID',
+                "Rigid Collider",
+                "Treat as a rigid obstacle that can collide with deformables",
+            ),
+        ),
+        default='DEFORMABLE',
+    )
+
+    rigid_density: FloatProperty(
+        name="Rigid Density",
+        description=(
+            "Approximate mass density used for rigid body response. Higher values "
+            "make the collider harder to move when in hybrid mode."
+        ),
+        default=2500.0,
+        min=10.0,
+        max=20000.0,
+        unit='NONE',
+    )
+
     # Damping & restitution
     velocity_damping: FloatProperty(
         name="Velocity Damping",
@@ -574,16 +614,21 @@ class AndoBarrierSceneProperties(PropertyGroup):
 classes = (
     AndoBarrierMaterialProperties,
     AndoBarrierSceneProperties,
+    AndoBarrierObjectProperties,
 )
+
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    
+
     bpy.types.Scene.ando_barrier = PointerProperty(type=AndoBarrierSceneProperties)
+    bpy.types.Object.ando_barrier_body = PointerProperty(type=AndoBarrierObjectProperties)
+
 
 def unregister():
     del bpy.types.Scene.ando_barrier
-    
+    del bpy.types.Object.ando_barrier_body
+
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
