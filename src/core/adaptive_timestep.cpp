@@ -1,6 +1,7 @@
 #include "adaptive_timestep.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace ando_barrier {
 
@@ -79,6 +80,11 @@ Real AdaptiveTimestep::smooth_dt_change(
 }
 
 Real AdaptiveTimestep::compute_min_edge_length(const Mesh& mesh) {
+    if (mesh.edges.empty()) {
+        // Degenerate mesh (no edges) → return conservative minimum length
+        return kMinEdgeLengthThreshold;
+    }
+
     Real min_edge_sq = std::numeric_limits<Real>::max();
     
     // Iterate over all edges
@@ -97,7 +103,7 @@ Real AdaptiveTimestep::compute_min_edge_length(const Mesh& mesh) {
     }
     
     // Return length (not squared)
-    return std::sqrt(min_edge_sq);
+    return std::sqrt(std::max(min_edge_sq, static_cast<Real>(0.0)));
 }
 
 Real AdaptiveTimestep::compute_max_velocity(const VecX& velocities) {
