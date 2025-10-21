@@ -94,7 +94,8 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(python3 -m pybind11 --cmakedir) ..
+        PY_EXEC=$(python -c 'import sys; print(sys.executable)')
+        cmake -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE="$PY_EXEC" -DCMAKE_PREFIX_PATH=$(python -m pybind11 --cmakedir) ..
         cmake --build . --config Release
         cmake --install . --config Release
 
@@ -104,7 +105,8 @@ jobs:
         if (-Not (Test-Path build)) { New-Item -ItemType Directory -Path build }
         cd build
         $pybind11_dir = python -m pybind11 --cmakedir
-        cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR -DCMAKE_PREFIX_PATH="$pybind11_dir" ..
+        $python_exec = python -c "import sys; print(sys.executable)"
+        cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR -DCMAKE_PREFIX_PATH="$pybind11_dir" -DPython3_EXECUTABLE="$python_exec" ..
         cmake --build . --config Release
         cmake --install . --config Release
         

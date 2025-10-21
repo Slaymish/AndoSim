@@ -9,6 +9,7 @@
 set -e  # Exit on error
 
 # Default options
+PYTHON_EXECUTABLE=""
 BUILD_TYPE="Release"
 CLEAN=false
 RUN_TESTS=false
@@ -28,12 +29,21 @@ while [[ $# -gt 0 ]]; do
             RUN_TESTS=true
             shift
             ;;
+        -p|--python)
+            if [ -z "${2:-}" ]; then
+                echo "Error: --python requires an interpreter path"
+                exit 1
+            fi
+            PYTHON_EXECUTABLE="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Build script for Ando Barrier Core"
             echo "Usage: ./build.sh [options]"
             echo "  -d, --debug     Build in debug mode"
             echo "  -c, --clean     Clean before build"
             echo "  -t, --test      Run tests after build"
+            echo "  -p, --python    Python interpreter to target (default: auto-detect python3.11)"
             echo "  -h, --help      Show this help"
             exit 0
             ;;
@@ -44,6 +54,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Resolve Python interpreter
+if [ -z "$PYTHON_EXECUTABLE" ]; then
+    for candidate in python3.11 python3; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            PYTHON_EXECUTABLE="$(command -v "$candidate")"
+            break
+        fi
+    done
+fi
+
+if [ -z "$PYTHON_EXECUTABLE" ]; then
+    echo "Unable to locate a Python interpreter. Please specify one with --python PATH."
+    exit 1
+fi
+
 # Project root
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
@@ -53,6 +78,7 @@ echo "Ando Barrier Core Build Script"
 echo "========================================="
 echo "Build Type: $BUILD_TYPE"
 echo "Project Root: $PROJECT_ROOT"
+echo "Python Executable: $PYTHON_EXECUTABLE"
 echo ""
 
 # Clean if requested
@@ -71,8 +97,11 @@ cd build
 
 # Configure
 echo "Configuring with CMake..."
+PYBIND11_CMAKE_DIR="$("$PYTHON_EXECUTABLE" -m pybind11 --cmakedir)"
 cmake .. \
     -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+    -DPython3_EXECUTABLE="$PYTHON_EXECUTABLE" \
+    -DCMAKE_PREFIX_PATH="$PYBIND11_CMAKE_DIR" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 echo ""
