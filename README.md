@@ -7,6 +7,7 @@ Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic 
 **For Blender Users:**
 - Start with the [GETTING_STARTED.md](docs/GETTING_STARTED.md) guide for installation and your first viewport simulation.
 - See [BLENDER_QUICK_START.md](docs/BLENDER_QUICK_START.md) for detailed panel descriptions, scripted demos, and advanced workflows.
+- Need the prebuilt binary from CI? Those artifacts target Blender versions that ship with Python 3.11 (Blender 4.1–4.5). Older releases require rebuilding the module with Blender's bundled Python—see the compatibility table in the Getting Started guide.
 
 **For Developers:**
 - Build: `./build.sh` (requires CMake, Eigen3, pybind11)

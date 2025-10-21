@@ -7,10 +7,42 @@ Welcome to **AndoSim**, a high-accuracy barrier-based physics solver that now ru
 ## 1. Requirements
 
 - **Blender** 3.6 LTS or newer (tested with Blender 4.x)
-- **Python** version that matches your Blender build (3.10 for Blender 3.6, 3.13 for Blender 4.1+)
+- **Python** version that matches your Blender build (see compatibility table below)
 - CMake + a C++17 compiler (only needed if you plan to rebuild the native `ando_barrier_core` module)
 
 > Tip: If you are using Blender from Steam or a custom install, locate the bundled Python interpreter under `<blender>/python/bin` for rebuilds.
+
+### Prebuilt Module Compatibility
+
+The GitHub Actions **build** and **release** workflows compile `ando_barrier_core` against **Python 3.11**. Use the table below to determine which Blender versions can load those prebuilt artifacts directly. For Blender releases that bundle a different Python version, rebuild the module locally with that interpreter before packaging the add-on.
+
+| Blender Version | Bundled Python | Prebuilt Artifact from CI? |
+|-----------------|----------------|----------------------------|
+| 4.5             | 3.11.11        | ✅ Works out of the box     |
+| 4.4             | 3.11.11        | ✅ Works out of the box     |
+| 4.3             | 3.11.9         | ✅ Works out of the box     |
+| 4.2             | 3.11.7         | ✅ Works out of the box     |
+| 4.1             | 3.11.6         | ✅ Works out of the box     |
+| 4.0             | 3.10.13        | ❌ Rebuild with Blender's Python |
+| 3.6 LTS         | 3.10.13        | ❌ Rebuild with Blender's Python |
+| 3.5             | 3.10.9         | ❌ Rebuild with Blender's Python |
+| 3.4             | 3.10.8         | ❌ Rebuild with Blender's Python |
+| 3.3             | 3.10.13        | ❌ Rebuild with Blender's Python |
+| 3.2             | 3.10.2         | ❌ Rebuild with Blender's Python |
+| 3.1             | 3.10.2         | ❌ Rebuild with Blender's Python |
+| 3.0             | 3.9.7          | ❌ Rebuild with Blender's Python |
+| 2.93            | 3.9.2          | ❌ Rebuild with Blender's Python |
+| 2.92            | 3.7.7          | ❌ Rebuild with Blender's Python |
+| 2.91            | 3.7.7          | ❌ Rebuild with Blender's Python |
+| 2.90            | 3.7.4          | ❌ Rebuild with Blender's Python |
+| 2.83            | 3.7.4          | ❌ Rebuild with Blender's Python |
+| 2.82            | 3.7.5          | ❌ Rebuild with Blender's Python |
+| 2.81            | 3.7.4          | ❌ Rebuild with Blender's Python |
+| 2.80            | 3.7.0          | ❌ Rebuild with Blender's Python |
+| 2.79            | 3.5.3          | ❌ Rebuild with Blender's Python |
+| 2.78            | 3.5.2          | ❌ Rebuild with Blender's Python |
+
+> When rebuilding, run `./build.sh` (or the CMake steps in the README) using Blender's bundled Python executable so the generated binary matches your target environment.
 
 ---
 
