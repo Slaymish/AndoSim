@@ -2,6 +2,9 @@
 
 Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness](https://doi.org/10.1145/3687908)" (Ando 2024) for cloth/shell physics simulation.
 
+> **Contributors!!** Contact me if you'd like to work on this with me, i'd love the help!
+> Contact me via email (hamishapps@gmail.com) or discord (Slaymish)
+
 ## Quick Start
 
 **For Blender Users:**
