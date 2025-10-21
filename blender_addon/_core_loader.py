@@ -63,6 +63,30 @@ def _alias_module(module: ModuleType) -> None:
     sys.modules.setdefault(_PACKAGE_NAME, module)
 
 
+def _load_module_from_path(path: Path) -> tuple[ModuleType | None, str | None]:
+    """Load a module directly from the provided file system path."""
+
+    try:
+        spec = importlib.util.spec_from_file_location(_MODULE_NAME, path)
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, str(exc)
+
+    if spec is None or spec.loader is None:
+        return None, "no loader available"
+
+    try:
+        module = importlib.util.module_from_spec(spec)
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, str(exc)
+
+    try:
+        spec.loader.exec_module(module)  # type: ignore[call-arg]
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, str(exc)
+
+    return module, None
+
+
 def _import_core() -> ModuleType:
     """Internal helper that tries every resolution strategy and returns the module.
 
@@ -79,42 +103,62 @@ def _import_core() -> ModuleType:
 
     _ensure_addon_on_path()
 
-    # Standard import (either native extension on sys.path or already registered).
+    preloaded = sys.modules.get(_MODULE_NAME) or sys.modules.get(_PACKAGE_NAME)
+    if preloaded is not None:
+        _alias_module(preloaded)
+        _CACHED_MODULE = preloaded
+        return preloaded
+
+    # Prefer an already-installed binary module on sys.path.
+    binary_module: ModuleType | None = None
     try:
-        module = importlib.import_module(_MODULE_NAME)
+        candidate = importlib.import_module(_MODULE_NAME)
     except ModuleNotFoundError:
-        pass
+        candidate = None
     else:
+        module_file = getattr(candidate, "__file__", "")
+        if module_file and Path(module_file).suffix not in {".py", ".pyc"}:
+            binary_module = candidate
+
+    errors: List[str] = []
+    candidates = list(_iter_candidate_paths())
+    fallback_candidate: Path | None = None
+
+    for candidate in candidates:
+        suffix = candidate.suffix.lower()
+        if suffix == ".py":
+            fallback_candidate = candidate
+            continue
+
+        module, error = _load_module_from_path(candidate)
+        if module is None:
+            errors.append(f"{candidate}: {error}")
+            continue
+
         _alias_module(module)
         _CACHED_MODULE = module
         return module
+
+    if binary_module is not None:
+        _alias_module(binary_module)
+        _CACHED_MODULE = binary_module
+        return binary_module
+
+    if fallback_candidate is not None:
+        module, error = _load_module_from_path(fallback_candidate)
+        if module is None:
+            errors.append(f"{fallback_candidate}: {error}")
+        else:
+            _alias_module(module)
+            _CACHED_MODULE = module
+            return module
 
     # Package-relative import (pure-Python shim within the add-on).
     try:
         module = importlib.import_module(_PACKAGE_NAME)
     except ModuleNotFoundError:
-        pass
+        module = None
     else:
-        _alias_module(module)
-        _CACHED_MODULE = module
-        return module
-
-    errors: List[str] = []
-    candidates = list(_iter_candidate_paths())
-
-    for candidate in candidates:
-        spec = importlib.util.spec_from_file_location(_MODULE_NAME, candidate)
-        if spec is None or spec.loader is None:
-            errors.append(f"{candidate}: no loader available")
-            continue
-
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)  # type: ignore[call-arg]
-        except Exception as exc:  # pragma: no cover - defensive
-            errors.append(f"{candidate}: {exc}")
-            continue
-
         _alias_module(module)
         _CACHED_MODULE = module
         return module

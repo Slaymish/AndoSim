@@ -8,6 +8,8 @@ from bpy.props import (
     PointerProperty,
 )
 
+from typing import Optional
+
 # -----------------------------------------------------------------------------
 # Material preset definitions
 # -----------------------------------------------------------------------------
@@ -231,19 +233,37 @@ _MATERIAL_PRESET_ITEMS = [
 ]
 _MATERIAL_PRESET_ITEMS.append(("CUSTOM", "Custom", "User-defined material parameters", len(_MATERIAL_PRESET_ITEMS)))
 
+_PRESET_LOCK: set[int] = set()
+
+
+def _lock_handle(obj: Optional[PropertyGroup]) -> Optional[int]:
+    """Return a stable handle for RNA property group instances."""
+    if obj is None:
+        return None
+    try:
+        return obj.as_pointer()
+    except AttributeError:  # pragma: no cover - defensive
+        return None
+
+
+def _is_preset_locked(obj: Optional[PropertyGroup]) -> bool:
+    """Check whether the property group is currently applying a preset."""
+    handle = _lock_handle(obj)
+    return handle is not None and handle in _PRESET_LOCK
+
 
 def _mark_material_custom(self, _context):
     """Mark the owning scene preset as custom when the user edits material parameters."""
     scene = getattr(self, "id_data", None)
     if isinstance(scene, bpy.types.Scene):
         props = getattr(scene, "ando_barrier", None)
-        if props and getattr(props, "_applying_preset", False) is False and props.material_preset != "CUSTOM":
+        if props and not _is_preset_locked(props) and props.material_preset != "CUSTOM":
             props.material_preset = "CUSTOM"
 
 
 def _mark_scene_custom(self, _context):
     """Mark preset as custom when a scene parameter tied to presets is edited."""
-    if getattr(self, "_applying_preset", False):
+    if _is_preset_locked(self):
         return
     if self.material_preset != "CUSTOM":
         self.material_preset = "CUSTOM"
@@ -259,7 +279,9 @@ def _apply_material_preset(self, _context):
     preset = _MATERIAL_PRESET_DATA.get(preset_key)
     if not preset:
         return
-    self._applying_preset = True
+    handle = _lock_handle(self)
+    if handle is not None:
+        _PRESET_LOCK.add(handle)
     try:
         mat_props = self.material_properties
         for attr, value in preset["material"].items():
@@ -269,7 +291,8 @@ def _apply_material_preset(self, _context):
             if hasattr(self, attr):
                 setattr(self, attr, value)
     finally:
-        self._applying_preset = False
+        if handle is not None:
+            _PRESET_LOCK.discard(handle)
 
 class AndoBarrierMaterialProperties(PropertyGroup):
     """Material properties for Ando Barrier simulation"""
