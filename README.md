@@ -1,5 +1,7 @@
 # AndoSim: Ando Barrier Physics
 
+![AndoSim Logo](docs/example_images/teaser-image.jpg)
+
 AndoSim is a Blender add-on that ports the SIGGRAPH 2024 method from ["A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness"](https://doi.org/10.1145/3687908) into day-to-day cloth and shell work. The solver matches the paper’s barrier formulation, supports live viewport playback, and exposes all the knobs you’d expect inside Blender.
 
 ### Why it stands out
