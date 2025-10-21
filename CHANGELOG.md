@@ -5,6 +5,13 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-10-21
+
+### Fixed
+- Added auto triangulation to meshes
+- Fixed panels not displaying in UI
+- Removed build.yml, as release.yml builds as well
+
 ## [1.0.2] - 2025-10-21
 
 ### Fixed
@@ -38,12 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Red (near-contact) → Yellow (transition) → Green (safe)
   - Configurable gap thresholds (0.0001m - 0.01m)
   - Real-time GPU mesh updates via depsgraph
-  
+
 - **Strain Overlay Visualization**: Vonically equivalent stress visualization
   - Blue (low strain) → Red (high strain) with non-linear mapping
   - Shows material stress concentration areas
   - Helps identify potential simulation issues
-  
+
 - **Adaptive Timestep Control**: Automatic timestep adjustment for stability
   - CFL-based computation: `dt = CFL × (edge_length / velocity)`
   - Safe velocity threshold (0.001 m/s) to prevent excessive refinement
