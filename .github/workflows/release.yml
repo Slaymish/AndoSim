@@ -116,6 +116,10 @@ jobs:
         # Copy Python files and manifest
         cp blender_addon/*.py addon_package/ando_barrier/
         cp blender_addon/blender_manifest.toml addon_package/ando_barrier/
+        if [ ! -f addon_package/ando_barrier/ando_barrier_core.py ]; then
+          echo "ando_barrier_core.py was not copied into the add-on package" >&2
+          exit 1
+        fi
         
         # Copy built module
         if [ "${{ runner.os }}" = "Windows" ]; then

@@ -112,6 +112,15 @@ print_info "Running pre-release checks..."
 echo "$VERSION" > VERSION
 print_success "Updated VERSION file to $VERSION"
 
+# 2. Ensure fallback shim is bundled with the Blender add-on
+if [ -f "blender_addon/ando_barrier_core.py" ]; then
+    print_success "Confirmed blender_addon/ando_barrier_core.py is present for packaging"
+else
+    print_error "Missing blender_addon/ando_barrier_core.py - fallback module will not be packaged"
+    echo "Please ensure the fallback shim resides inside blender_addon/ before releasing."
+    exit 1
+fi
+
 # 3. Build check
 print_info "Testing build..."
 if ./build.sh -c > /dev/null 2>&1; then

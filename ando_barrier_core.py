@@ -1,25 +1,39 @@
-"""Shim module that exposes the pure-Python fallback implementation."""
+"""Compatibility shim that re-exports the add-on's core module."""
 
 from __future__ import annotations
 
 import importlib.util
 import sys
+from importlib import import_module
 from pathlib import Path
 from types import ModuleType
 
 
-def _load_fallback() -> ModuleType:
-    """Load the shared fallback implementation from the add-on sources."""
+def _load_addon_module() -> ModuleType:
+    """Import the add-on shim when developing from the repository."""
 
-    # Candidates are checked in order.  The first is used when running the unit
-    # tests from the repository root, while the second allows the fallback file
-    # to live next to this shim when packaged outside of the Blender add-on.
-    candidates = [
+    try:
+        return import_module("blender_addon.ando_barrier_core")
+    except ModuleNotFoundError:
+        pass
+
+    addon_path = Path(__file__).resolve().with_name("blender_addon") / "ando_barrier_core.py"
+    if addon_path.exists():
+        spec = importlib.util.spec_from_file_location("_ando_barrier_core_addon_shim", addon_path)
+        if spec is not None and spec.loader is not None:  # pragma: no cover - defensive
+            module = importlib.util.module_from_spec(spec)
+            sys.modules.setdefault("_ando_barrier_core_addon_shim", module)
+            spec.loader.exec_module(module)
+            return module
+
+    # Fall back to the legacy behaviour where the fallback lived directly next
+    # to this file.
+    fallback_candidates = [
         Path(__file__).resolve().with_name("blender_addon") / "_core_fallback.py",
         Path(__file__).resolve().with_name("_core_fallback.py"),
     ]
 
-    for candidate in candidates:
+    for candidate in fallback_candidates:
         if not candidate.exists():
             continue
 
@@ -35,14 +49,13 @@ def _load_fallback() -> ModuleType:
     raise ImportError("Unable to locate fallback implementation for ando_barrier_core")
 
 
-_FALLBACK = _load_fallback()
+_ADDON_MODULE = _load_addon_module()
 
-# Re-export everything defined by the fallback module so that callers continue
-# to interact with the same API surface.
-__all__ = getattr(_FALLBACK, "__all__", [])
+# Re-export everything defined by the add-on module so existing imports from the
+# repository root continue to work without modification.
+__all__ = getattr(_ADDON_MODULE, "__all__", [])
 
-for _name in dir(_FALLBACK):
+for _name in dir(_ADDON_MODULE):
     if _name.startswith("__") and _name not in {"__all__"}:
         continue
-    globals()[_name] = getattr(_FALLBACK, _name)
-
+    globals()[_name] = getattr(_ADDON_MODULE, _name)
