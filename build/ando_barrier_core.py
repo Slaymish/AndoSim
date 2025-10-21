@@ -1,11 +1,23 @@
-"""Proxy module that exposes the root-level Python fallback."""
+"""Proxy module that exposes the shared Python fallback implementation."""
 
 import sys
 from importlib import util
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent / "ando_barrier_core.py"
-_SPEC = util.spec_from_file_location("_ando_barrier_core_fallback", _ROOT)
+_CANDIDATES = [
+    Path(__file__).resolve().parent / "_core_fallback.py",
+    Path(__file__).resolve().parent.parent / "blender_addon" / "_core_fallback.py",
+    Path(__file__).resolve().parent.parent / "ando_barrier_core.py",
+]
+
+_SPEC = None
+for _candidate in _CANDIDATES:
+    if not _candidate.exists():
+        continue
+    _SPEC = util.spec_from_file_location("_ando_barrier_core_fallback", _candidate)
+    if _SPEC is not None and _SPEC.loader is not None:
+        break
+
 if _SPEC is None or _SPEC.loader is None:  # pragma: no cover - defensive
     raise ImportError("Unable to locate Python fallback for ando_barrier_core")
 
