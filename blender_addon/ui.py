@@ -1,7 +1,52 @@
+import logging
+from pathlib import Path
+
 import bpy
 from bpy.types import Panel
 
 from ._core_loader import get_core_module
+
+_LOGGER = logging.getLogger(__name__)
+_LOGGED_REALTIME_CORE_FAILURE = False
+_LOGGED_OPERATOR_IMPORT_FAILURE = False
+
+
+def _core_path_hint(core_module=None) -> str:
+    """Return the most relevant path to the compiled core module."""
+
+    module_file = getattr(core_module, "__file__", None) if core_module else None
+    if module_file:
+        module_path = Path(module_file)
+        try:
+            return str(module_path.resolve())
+        except OSError:
+            return str(module_path)
+
+    try:
+        addon_root = Path(__file__).resolve().parent
+    except OSError:
+        addon_root = Path(__file__).parent
+
+    patterns = (
+        "ando_barrier_core*.so",
+        "ando_barrier_core*.pyd",
+        "ando_barrier_core*.dll",
+        "ando_barrier_core*.dylib",
+        "ando_barrier_core.py",
+    )
+
+    for pattern in patterns:
+        for candidate in sorted(addon_root.glob(pattern)):
+            if candidate.exists():
+                try:
+                    return str(candidate.resolve())
+                except OSError:
+                    return str(candidate)
+
+    try:
+        return str(addon_root.resolve())
+    except OSError:
+        return str(addon_root)
 
 
 def _count_sim_objects(context):
@@ -272,47 +317,83 @@ class ANDO_PT_realtime_panel(Panel):
     def draw(self, context):
         layout = self.layout
         
-        # Import to check simulation state
+        core_module = get_core_module(context="Real-time preview panel")
+        core_hint = _core_path_hint(core_module)
+
+        global _LOGGED_REALTIME_CORE_FAILURE  # pylint: disable=global-statement
+        global _LOGGED_OPERATOR_IMPORT_FAILURE  # pylint: disable=global-statement
+
+        if core_module is None:
+            layout.label(text="Core module unavailable; real-time preview disabled.", icon='ERROR')
+            layout.label(text="See console for resolved path hint.", icon='INFO')
+            row = layout.row()
+            row.enabled = False
+            row.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+
+            if not _LOGGED_REALTIME_CORE_FAILURE:
+                _LOGGER.error(
+                    "Real-time preview initialization blocked: ando_barrier_core not found. Resolved search path: %s",
+                    core_hint,
+                )
+                _LOGGED_REALTIME_CORE_FAILURE = True
+            return
+
         try:
             from . import operators
-            sim_state = operators._sim_state
+        except ImportError as exc:
+            layout.label(text="Failed to load real-time controls.", icon='ERROR')
+            layout.label(text="See console for diagnostics.", icon='INFO')
+            row = layout.row()
+            row.enabled = False
+            row.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
 
-            if sim_state['initialized']:
-                layout.label(text=f"Frame: {sim_state['frame']}", icon='TIME')
+            if not _LOGGED_OPERATOR_IMPORT_FAILURE:
+                _LOGGER.error(
+                    "Real-time preview initialization failed to import operators (core hint: %s): %s",
+                    core_hint,
+                    exc,
+                )
+                _LOGGED_OPERATOR_IMPORT_FAILURE = True
+            return
 
-                rigid_objs = [obj for obj in sim_state.get('rigid_objects', []) if obj]
-                if rigid_objs:
-                    names = ", ".join(obj.name for obj in rigid_objs[:2])
-                    if len(rigid_objs) > 2:
-                        names += ", …"
-                    layout.label(text=f"Rigid colliders: {names}", icon='CUBE')
-                elif _count_sim_objects(context)[1] > 0:
-                    layout.label(text="Rigid colliders configured; reinitialize to sync.", icon='INFO')
+        _LOGGED_REALTIME_CORE_FAILURE = False
+        _LOGGED_OPERATOR_IMPORT_FAILURE = False
 
-                # Play/pause button
-                row = layout.row(align=True)
-                play_icon = 'PAUSE' if sim_state['playing'] else 'PLAY'
-                play_text = "Pause" if sim_state['playing'] else "Play"
-                row.operator("ando.toggle_play_simulation", text=play_text, icon=play_icon)
-                
-                # Step button
-                row = layout.row(align=True)
-                row.operator("ando.step_simulation", text="Step", icon='FRAME_NEXT')
-                row.operator("ando.reset_realtime_simulation", text="Reset", icon='FILE_REFRESH')
-                
-                # Hot-reload parameter update
-                layout.separator()
-                box = layout.box()
-                box.label(text="Parameter Control", icon='SETTINGS')
-                box.operator("ando.update_parameters", text="Apply Changes", icon='FILE_REFRESH')
-                box.label(text="Update materials/settings", icon='INFO')
-                box.label(text="without restarting sim")
-            else:
-                layout.label(text="Not initialized", icon='INFO')
-                layout.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
-                
-        except ImportError:
-            layout.label(text="Core module not loaded", icon='ERROR')
+        sim_state = operators._sim_state
+
+        if sim_state['initialized']:
+            layout.label(text=f"Frame: {sim_state['frame']}", icon='TIME')
+
+            rigid_objs = [obj for obj in sim_state.get('rigid_objects', []) if obj]
+            if rigid_objs:
+                names = ", ".join(obj.name for obj in rigid_objs[:2])
+                if len(rigid_objs) > 2:
+                    names += ", …"
+                layout.label(text=f"Rigid colliders: {names}", icon='CUBE')
+            elif _count_sim_objects(context)[1] > 0:
+                layout.label(text="Rigid colliders configured; reinitialize to sync.", icon='INFO')
+
+            # Play/pause button
+            row = layout.row(align=True)
+            play_icon = 'PAUSE' if sim_state['playing'] else 'PLAY'
+            play_text = "Pause" if sim_state['playing'] else "Play"
+            row.operator("ando.toggle_play_simulation", text=play_text, icon=play_icon)
+            
+            # Step button
+            row = layout.row(align=True)
+            row.operator("ando.step_simulation", text="Step", icon='FRAME_NEXT')
+            row.operator("ando.reset_realtime_simulation", text="Reset", icon='FILE_REFRESH')
+            
+            # Hot-reload parameter update
+            layout.separator()
+            box = layout.box()
+            box.label(text="Parameter Control", icon='SETTINGS')
+            box.operator("ando.update_parameters", text="Apply Changes", icon='FILE_REFRESH')
+            box.label(text="Update materials/settings", icon='INFO')
+            box.label(text="without restarting sim")
+        else:
+            layout.label(text="Not initialized", icon='INFO')
+            layout.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
 
 class ANDO_PT_debug_panel(Panel):
     """Debug visualization panel"""
