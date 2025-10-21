@@ -9,21 +9,19 @@ bl_info = {
 }
 
 import bpy
-import sys
-import os
 
-# Add the compiled module path
-addon_dir = os.path.dirname(__file__)
-if addon_dir not in sys.path:
-    sys.path.insert(0, addon_dir)
+from ._core_loader import get_core_module
 
-try:
-    import ando_barrier_core as abc
-    CORE_AVAILABLE = True
-    print(f"Loaded {abc.version()}")
-except ImportError as e:
-    CORE_AVAILABLE = False
-    print(f"Warning: ando_barrier_core not available: {e}")
+_CORE = get_core_module(context="Add-on initialisation")
+CORE_AVAILABLE = _CORE is not None
+
+if CORE_AVAILABLE:
+    try:
+        print(f"Loaded {_CORE.version()}")
+    except AttributeError:
+        print("Loaded ando_barrier_core module (version unavailable)")
+else:
+    print("Warning: ando_barrier_core could not be imported during add-on initialisation")
 
 from . import ui
 from . import operators

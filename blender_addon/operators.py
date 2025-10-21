@@ -4,6 +4,8 @@ import numpy as np
 from collections import Counter
 from mathutils import Matrix, Vector
 
+from ._core_loader import get_core_module
+
 
 def _default_stats():
     return {
@@ -44,9 +46,8 @@ def _default_stats():
 def _collect_rigid_bodies(context, exclude_obj=None, reporter=None):
     """Convert Blender meshes tagged as rigid colliders into Ando rigid bodies."""
 
-    try:
-        import ando_barrier_core as abc
-    except ImportError:
+    abc = get_core_module(context="Rigid body extraction")
+    if abc is None:
         if reporter:
             reporter({'WARNING'}, "ando_barrier_core module not available; rigid bodies disabled")
         return []
@@ -192,9 +193,8 @@ class ANDO_OT_bake_simulation(Operator):
     def execute(self, context):
         props = context.scene.ando_barrier
         
-        try:
-            import ando_barrier_core as abc
-        except ImportError:
+        abc = get_core_module(context="Bake Simulation operator")
+        if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available. Build the C++ extension first.")
             return {'CANCELLED'}
         
@@ -475,9 +475,8 @@ class ANDO_OT_init_realtime_simulation(Operator):
         global _sim_state
         props = context.scene.ando_barrier
         
-        try:
-            import ando_barrier_core as abc
-        except ImportError:
+        abc = get_core_module(context="Real-time simulation initialization")
+        if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available")
             return {'CANCELLED'}
         
@@ -601,12 +600,11 @@ class ANDO_OT_step_simulation(Operator):
             self.report({'WARNING'}, "Initialize simulation first")
             return {'CANCELLED'}
         
-        try:
-            import ando_barrier_core as abc
-            import time
-        except ImportError:
+        abc = get_core_module(context="Simulation step operator")
+        if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available")
             return {'CANCELLED'}
+        import time
         
         obj = context.active_object
         if not obj or obj.type != 'MESH':

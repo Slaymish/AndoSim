@@ -9,6 +9,8 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 import numpy as np
 
+from ._core_loader import get_core_module
+
 # Global state for visualization
 _draw_handler = None
 _shader = None
@@ -191,9 +193,8 @@ def compute_strain_heatmap(mesh_obj, state, strain_limit=0.05):
     if not mesh_obj or not mesh_obj.data:
         return None, None, None
     
-    try:
-        import ando_barrier_core as abc
-    except ImportError:
+    abc = get_core_module(context="Visualization strain heatmap")
+    if abc is None:
         return None, None, None
     
     mesh = mesh_obj.data

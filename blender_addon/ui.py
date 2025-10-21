@@ -1,6 +1,8 @@
 import bpy
 from bpy.types import Panel
 
+from ._core_loader import get_core_module
+
 
 def _count_sim_objects(context):
     deformable = 0
@@ -29,13 +31,16 @@ class ANDO_PT_main_panel(Panel):
         props = context.scene.ando_barrier
         
         # Check if core module is available
-        try:
-            import ando_barrier_core as abc
-            layout.label(text=abc.version(), icon='INFO')
-        except ImportError:
+        core_module = get_core_module(context="UI status check")
+        if core_module is None:
             layout.label(text="Core module not loaded", icon='ERROR')
             layout.label(text="Build C++ extension first")
             return
+
+        try:
+            layout.label(text=core_module.version(), icon='INFO')
+        except AttributeError:
+            layout.label(text="Core module loaded", icon='INFO')
         
         # Time stepping
         box = layout.box()

@@ -6,6 +6,8 @@ Allows updating material and solver parameters during simulation without re-init
 import bpy
 from bpy.types import Operator
 
+from ._core_loader import get_core_module
+
 class ANDO_OT_update_parameters(Operator):
     """Update simulation parameters without re-initializing"""
     bl_idname = "ando.update_parameters"
@@ -20,10 +22,8 @@ class ANDO_OT_update_parameters(Operator):
             self.report({'WARNING'}, "Simulation not initialized")
             return {'CANCELLED'}
         
-        try:
-            import ando_barrier_core as abc
-        except ImportError:
-            self.report({'ERROR'}, "ando_barrier_core module not available")
+        abc = get_core_module(reporter=self.report, context="Parameter hot-reload operator")
+        if abc is None:
             return {'CANCELLED'}
         
         props = context.scene.ando_barrier
