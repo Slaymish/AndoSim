@@ -17,7 +17,7 @@ import logging
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ _ADDON_ROOT = Path(__file__).resolve().parent
 
 _CACHED_MODULE: ModuleType | None = None
 _LOGGED_FAILURE = False
+_FALLBACK_PROMPTED = False
 
 
 def _ensure_addon_on_path() -> None:
@@ -151,6 +152,7 @@ def _import_core() -> ModuleType:
         else:
             _alias_module(module)
             _CACHED_MODULE = module
+            _handle_python_fallback()
             return module
 
     # Package-relative import (pure-Python shim within the add-on).
@@ -161,6 +163,7 @@ def _import_core() -> ModuleType:
     else:
         _alias_module(module)
         _CACHED_MODULE = module
+        _handle_python_fallback()
         return module
 
     search_hint = ", ".join(str(path) for path in candidates) or "no matching files"
@@ -243,3 +246,73 @@ def core_available() -> bool:
     except ImportError:
         return False
     return True
+
+
+def load_core_from_path(path: Path) -> tuple[ModuleType | None, str | None]:
+    """Load a compiled core module from ``path`` and cache it for future calls."""
+
+    module, error = _load_module_from_path(path)
+    if module is None:
+        return None, error
+
+    _alias_module(module)
+
+    global _CACHED_MODULE  # pylint: disable=global-statement
+    _CACHED_MODULE = module
+
+    return module, None
+
+
+def _handle_python_fallback() -> None:
+    """Notify Blender users that the Python fallback is active and prompt selection."""
+
+    global _FALLBACK_PROMPTED  # pylint: disable=global-statement
+    if _FALLBACK_PROMPTED:
+        return
+
+    _FALLBACK_PROMPTED = True
+
+    bpy = _try_import_bpy()
+    if bpy is None:
+        return
+
+    def _prompt_user() -> Optional[float]:  # pragma: no cover - Blender UI interaction
+        window_manager = getattr(bpy.context, "window_manager", None)
+        if window_manager is None:
+            return 0.5
+
+        def _draw(self, _context):
+            self.layout.label(text="Core module not found.")
+            self.layout.label(text="Please select it manually to enable full performance.")
+
+        try:
+            window_manager.popup_menu(_draw, title="Ando Barrier Core", icon='ERROR')
+        except Exception:  # pragma: no cover - defensive: Blender UI quirks
+            _LOGGER.debug("Failed to display fallback popup", exc_info=True)
+
+        try:
+            bpy.ops.ando.select_core_module('INVOKE_DEFAULT')
+        except Exception:  # pragma: no cover - operator may not be registered yet
+            _LOGGER.debug("Manual core selection operator unavailable, retrying", exc_info=True)
+            return 0.5
+
+        return None
+
+    try:
+        bpy.app.timers.register(_prompt_user, first_interval=0.1)
+    except Exception:  # pragma: no cover - defensive: timers not available
+        _LOGGER.debug("Failed to register fallback timer", exc_info=True)
+
+
+def _try_import_bpy():
+    """Safely attempt to import :mod:`bpy` without raising on failure."""
+
+    try:  # pragma: no cover - Blender-specific
+        import bpy  # type: ignore
+    except ModuleNotFoundError:  # pragma: no cover - executed outside Blender
+        return None
+    except Exception:  # pragma: no cover - defensive
+        _LOGGER.debug("Unexpected failure importing bpy", exc_info=True)
+        return None
+
+    return bpy
