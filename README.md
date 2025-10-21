@@ -1,73 +1,24 @@
-# BlenderSim: Ando Barrier Physics
+# AndoSim: Ando Barrier Physics
 
-Blender add-on implementing "[A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness](https://doi.org/10.1145/3687908)" (Ando 2024) for cloth/shell physics simulation.
+AndoSim is a Blender add-on that ports the SIGGRAPH 2024 method from ["A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness"](https://doi.org/10.1145/3687908) into day-to-day cloth and shell work. The solver matches the paper’s barrier formulation, supports live viewport playback, and exposes all the knobs you’d expect inside Blender.
 
-> **Contributors!!** Contact me if you'd like to work on this with me, i'd love the help!
-> Contact me via email (hamishapps@gmail.com) or discord (Slaymish)
+### Why it stands out
+- Real-time cloth/shell simulation that actually stays stable when you pile up contacts, thanks to the cubic barrier with dynamic stiffness.
+- Pin constraints, ground contacts, strain limiting, and experimental friction are all wired in and visible through Blender overlays.
+- C++ core (Eigen + pybind11) keeps the math fast and faithful to the paper; the Python layer is just orchestration and UI.
+- Rich debug tools: per-contact overlays, solver stats, scripted demos, and validation scenes.
 
-## Quick Start
+### Try it
+- Artists and tech animators: follow [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). It walks through installing the add-on, linking the core module, and running your first cloth drop in the viewport.
+- Developers: prerequisites are CMake, Eigen3, and pybind11. From the project root run `./build.sh` (tests: `./build.sh -t`). This compiles the C++ extension into `blender_addon/` so Blender can import it.
+- Need binaries fast? CI artifacts target Blender releases that ship Python 3.11 (4.1–4.5). Older Blender versions require rebuilding with the bundled interpreter—notes are in the getting started guide.
 
-**For Blender Users:**
-- Start with the [GETTING_STARTED.md](docs/GETTING_STARTED.md) guide for installation and your first viewport simulation.
-- See [BLENDER_QUICK_START.md](docs/BLENDER_QUICK_START.md) for detailed panel descriptions, scripted demos, and advanced workflows.
-- Need the prebuilt binary from CI? Those artifacts target Blender versions that ship with Python 3.11 (Blender 4.1–4.5). Older releases require rebuilding the module with Blender's bundled Python—see the compatibility table in the Getting Started guide.
+### Want to dig deeper?
+- [docs/BLENDER_QUICK_START.md](docs/BLENDER_QUICK_START.md) summarizes the add-on panels, realtime playback workflow, and common troubleshooting steps.
+- `docs/dev/PROJECT_SPEC.md` and `docs/dev/MILESTONE_ROADMAP.md` trace every decision back to the paper and outline what’s coming next.
+- Standalone demos live in `demos/`, and `tests/` holds the C++ unit suite that guards the solver math.
 
-**For Developers:**
-- Build: `./build.sh` (requires CMake, Eigen3, pybind11)
-- Test: `./build.sh -t` (runs C++ unit tests)
-- Demos: `./build/demos/demo_cloth_drape` (standalone C++ demos)
-- Visualize: `python3 demos/view_sequence.py output/cloth_drape`
-
-
-## Build Steps
-
-### 1. Install Dependencies
-
-- Install CMake from https://cmake.org/download/
-- Install Eigen3 from https://eigen.tuxfamily.org/
-- Install pybind11: `pip install "pybind11[global]"`
-
-### 2. Build the C++ Core Module
-
-From the project root directory:
-
-```bash
-# Create build directory
-mkdir build
-cd build
-
-# Configure with CMake (add pybind11 path if needed)
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(python3 -m pybind11 --cmakedir)
-
-# Build
-cmake --build . --config Release
-
-# Install to blender_addon directory
-cmake --install .
-```
-
-**Note for Windows**: Use `python -m pybind11 --cmakedir` instead of `python3`.
-
-### 4. Install Blender Add-on
-
-Once built, the `ando_barrier_core` module will be in the `blender_addon/` directory.
-
-```bash
-cp -r blender_addon ~/.config/blender/3.6/scripts/addons/ando_barrier
-```
-
-### 5. Enable Add-on in Blender
-
-1. Open Blender
-2. Go to Edit → Preferences → Add-ons
-3. Search for "Ando Barrier Physics"
-4. Enable the checkbox
-5. The panel will appear in the 3D View sidebar (press N) under "Ando Physics" tab
-
-
-## Next Steps
-
-After successful installation:
-1. See `demos/` for example scenes (standalone and Blender)
-2. Read `docs/BLENDER_QUICK_START.md` for Blender usage guide
-3. Check the paper for mathematical details
+### Join in
+- File bugs or feature requests on GitHub: `https://github.com/Slaymish/AndoSim`
+- Reach out on Discord (Slaymish) or email (hamishapps@gmail.com) if you want to contribute, pair on a feature, or share a scene.
+- Fresh perspectives are especially welcome on friction, export tooling, and performance tuning: there’s plenty of room to shape where AndoSim goes next.
