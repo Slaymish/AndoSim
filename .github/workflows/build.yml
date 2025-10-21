@@ -122,7 +122,7 @@ jobs:
         if [ "${{ runner.os }}" = "Windows" ]; then
           7z a -tzip ../ando_barrier_addon-${{ runner.os }}.zip ando_barrier/
         else
-          tar -czf ../ando_barrier_addon-${{ runner.os }}.tar.gz ando_barrier/
+          zip -r ../ando_barrier_addon-${{ runner.os }}.zip ando_barrier/
         fi
         
     - name: Upload addon package

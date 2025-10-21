@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 
-id = "org.blendersim.ando_barrier_physics"
+id = "ando_barrier"
 version = "1.0.1"
 name = "Ando Barrier Physics"
 tagline = "Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness"
