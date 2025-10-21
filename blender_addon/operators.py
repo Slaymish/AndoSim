@@ -2,9 +2,55 @@ import bpy
 from bpy.types import Operator
 import numpy as np
 from collections import Counter
+from pathlib import Path
 from mathutils import Matrix, Vector
 
-from ._core_loader import get_core_module
+from ._core_loader import get_core_module, load_core_from_path
+
+
+class ANDO_OT_select_core_module(Operator):
+    """Allow users to load a compiled ando_barrier_core module manually."""
+
+    bl_idname = "ando.select_core_module"
+    bl_label = "Select Ando Barrier Core Module"
+    bl_description = "Load a compiled ando_barrier_core binary to replace the Python fallback"
+    bl_options = {'REGISTER'}
+
+    filter_glob: bpy.props.StringProperty(
+        default="ando_barrier_core*.so;ando_barrier_core*.pyd;ando_barrier_core*.dll;ando_barrier_core*.dylib",
+        options={'HIDDEN'},
+    )
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+
+    def execute(self, context):
+        path = Path(self.filepath)
+        if not path.exists():
+            self.report({'ERROR'}, f"File not found: {path}")
+            return {'CANCELLED'}
+
+        module, error = load_core_from_path(path)
+        if module is None:
+            detail = error or "Unknown error"
+            self.report({'ERROR'}, f"Failed to load module: {detail}")
+            return {'CANCELLED'}
+
+        version_attr = getattr(module, "version", None)
+        version_label = None
+        if callable(version_attr):
+            try:
+                version_label = version_attr()
+            except Exception:  # pragma: no cover - version helper failed
+                version_label = None
+
+        if not version_label:
+            version_label = path.name
+
+        self.report({'INFO'}, f"Loaded {version_label}")
+        return {'FINISHED'}
+
+    def invoke(self, context, event):  # pragma: no cover - Blender UI invocation
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
 
 def _default_stats():
@@ -914,6 +960,7 @@ class ANDO_OT_toggle_debug_visualization(Operator):
         return {'FINISHED'}
 
 classes = (
+    ANDO_OT_select_core_module,
     ANDO_OT_bake_simulation,
     ANDO_OT_reset_simulation,
     ANDO_OT_add_pin_constraint,
