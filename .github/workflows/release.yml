@@ -113,8 +113,9 @@ jobs:
         VERSION=${{ github.ref_name }}
         mkdir -p addon_package/ando_barrier
         
-        # Copy Python files
+        # Copy Python files and manifest
         cp blender_addon/*.py addon_package/ando_barrier/
+        cp blender_addon/blender_manifest.toml addon_package/ando_barrier/
         
         # Copy built module
         if [ "${{ runner.os }}" = "Windows" ]; then
