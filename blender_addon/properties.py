@@ -464,6 +464,113 @@ class AndoBarrierSceneProperties(PropertyGroup):
         update=_mark_scene_custom,
     )
 
+    # Damping & restitution
+    velocity_damping: FloatProperty(
+        name="Velocity Damping",
+        description="Fraction of velocity removed each step (0 disables damping)",
+        default=0.05,
+        min=0.0,
+        max=0.99,
+        update=_mark_scene_custom,
+    )
+
+    contact_restitution: FloatProperty(
+        name="Restitution",
+        description="Bounce factor for contacts (0=inelastic, 1=perfectly elastic)",
+        default=0.15,
+        min=0.0,
+        max=1.0,
+        update=_mark_scene_custom,
+    )
+
+    # Strain limiting (optional)
+    enable_strain_limiting: BoolProperty(
+        name="Enable Strain Limiting",
+        description="Enable strain limiting constraints",
+        default=True,
+        update=_mark_scene_custom,
+    )
+
+    strain_limit: FloatProperty(
+        name="Strain Limit %",
+        description="Maximum strain as percentage (e.g., 5 for 5%)",
+        default=8.0,
+        min=0.1,
+        max=50.0,
+        update=_mark_scene_custom,
+    )
+
+    strain_tau: FloatProperty(
+        name="Strain τ",
+        description="Strain tau parameter (usually equals strain epsilon)",
+        default=0.08,
+        min=0.001,
+        max=0.5,
+        update=_mark_scene_custom,
+    )
+
+    # Ground plane
+    enable_ground_plane: BoolProperty(
+        name="Enable Ground Plane",
+        description="Add a ground plane collision constraint",
+        default=True,
+    )
+
+    ground_plane_height: FloatProperty(
+        name="Ground Height",
+        description="Height of ground plane",
+        default=0.0,
+        unit='LENGTH',
+    )
+
+    # Visualization settings
+    show_gap_heatmap: BoolProperty(
+        name="Show Gap Heatmap",
+        description="Display color-coded contact gap distances (red=contact, yellow=close, green=safe)",
+        default=False,
+    )
+
+    show_strain_overlay: BoolProperty(
+        name="Show Strain Overlay",
+        description="Display color-coded strain magnitude (blue=no stretch, green=mild, yellow=moderate, red=limit)",
+        default=False,
+    )
+
+    gap_heatmap_range: FloatProperty(
+        name="Gap Range",
+        description="Maximum gap distance for color mapping (meters)",
+        default=0.001,
+        min=0.0001,
+        max=0.01,
+        unit='LENGTH',
+    )
+
+    # Cache settings
+    cache_enabled: BoolProperty(
+        name="Enable Caching",
+        description="Cache simulation results",
+        default=True,
+    )
+
+    cache_start: IntProperty(
+        name="Cache Start Frame",
+        description="First frame to cache",
+        default=1,
+    )
+
+    cache_end: IntProperty(
+        name="Cache End Frame",
+        description="Last frame to cache",
+        default=250,
+    )
+
+    # Material properties (nested)
+    material_properties: PointerProperty(
+        type=AndoBarrierMaterialProperties,
+        name="Material",
+        description="Material properties for this simulation",
+    )
+
 
 class AndoBarrierObjectProperties(PropertyGroup):
     """Per-object settings describing how meshes participate in the solver."""
@@ -502,113 +609,6 @@ class AndoBarrierObjectProperties(PropertyGroup):
         min=10.0,
         max=20000.0,
         unit='NONE',
-    )
-
-    # Damping & restitution
-    velocity_damping: FloatProperty(
-        name="Velocity Damping",
-        description="Fraction of velocity removed each step (0 disables damping)",
-        default=0.05,
-        min=0.0,
-        max=0.99,
-        update=_mark_scene_custom,
-    )
-
-    contact_restitution: FloatProperty(
-        name="Restitution",
-        description="Bounce factor for contacts (0=inelastic, 1=perfectly elastic)",
-        default=0.15,
-        min=0.0,
-        max=1.0,
-        update=_mark_scene_custom,
-    )
-
-    # Strain limiting (optional)
-    enable_strain_limiting: BoolProperty(
-        name="Enable Strain Limiting",
-        description="Enable strain limiting constraints",
-        default=True,
-        update=_mark_scene_custom,
-    )
-    
-    strain_limit: FloatProperty(
-        name="Strain Limit %",
-        description="Maximum strain as percentage (e.g., 5 for 5%)",
-        default=8.0,
-        min=0.1,
-        max=50.0,
-        update=_mark_scene_custom,
-    )
-    
-    strain_tau: FloatProperty(
-        name="Strain τ",
-        description="Strain tau parameter (usually equals strain epsilon)",
-        default=0.08,
-        min=0.001,
-        max=0.5,
-        update=_mark_scene_custom,
-    )
-    
-    # Ground plane
-    enable_ground_plane: BoolProperty(
-        name="Enable Ground Plane",
-        description="Add a ground plane collision constraint",
-        default=True,
-    )
-    
-    ground_plane_height: FloatProperty(
-        name="Ground Height",
-        description="Height of ground plane",
-        default=0.0,
-        unit='LENGTH',
-    )
-    
-    # Visualization settings
-    show_gap_heatmap: BoolProperty(
-        name="Show Gap Heatmap",
-        description="Display color-coded contact gap distances (red=contact, yellow=close, green=safe)",
-        default=False,
-    )
-    
-    show_strain_overlay: BoolProperty(
-        name="Show Strain Overlay",
-        description="Display color-coded strain magnitude (blue=no stretch, green=mild, yellow=moderate, red=limit)",
-        default=False,
-    )
-    
-    gap_heatmap_range: FloatProperty(
-        name="Gap Range",
-        description="Maximum gap distance for color mapping (meters)",
-        default=0.001,
-        min=0.0001,
-        max=0.01,
-        unit='LENGTH',
-    )
-    
-    # Cache settings
-    cache_enabled: BoolProperty(
-        name="Enable Caching",
-        description="Cache simulation results",
-        default=True,
-    )
-    
-    cache_start: IntProperty(
-        name="Cache Start Frame",
-        description="First frame to cache",
-        default=1,
-    )
-    
-    cache_end: IntProperty(
-        name="Cache End Frame",
-        description="Last frame to cache",
-        default=250,
-    )
-    
-    # Material properties (nested)
-    material_properties: PointerProperty(
-        type=AndoBarrierMaterialProperties,
-        name="Material",
-        description="Material properties for this simulation",
     )
 
 classes = (
