@@ -116,6 +116,7 @@ jobs:
       run: |
         mkdir -p addon_package/ando_barrier
         cp blender_addon/*.py addon_package/ando_barrier/
+        cp blender_addon/blender_manifest.toml addon_package/ando_barrier/
         cp ${{ steps.module.outputs.module_path }} addon_package/ando_barrier/
         cd addon_package
         if [ "${{ runner.os }}" = "Windows" ]; then
