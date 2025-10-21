@@ -1,0 +1,15 @@
+schema_version = "1.0.0"
+
+id = "ando_barrier"
+version = "1.0.1"
+name = "Ando Barrier Physics"
+tagline = "Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness"
+maintainer = "BlenderSim Project"
+type = "add-on"
+website = "https://github.com/Slaymish/AndoSim"
+
+blender_version_min = "3.6.0"
+
+license = ["GPL-3.0-or-later"]
+
+tags = ["Animation", "Physics", "Simulation"]
