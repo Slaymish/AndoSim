@@ -96,7 +96,8 @@ jobs:
         cd build
         cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(python3 -m pybind11 --cmakedir) ..
         cmake --build . --config Release
-        
+        cmake --install . --config Release
+
     - name: Build (Windows)
       if: runner.os == 'Windows'
       run: |
@@ -105,6 +106,7 @@ jobs:
         $pybind11_dir = python -m pybind11 --cmakedir
         cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR -DCMAKE_PREFIX_PATH="$pybind11_dir" ..
         cmake --build . --config Release
+        cmake --install . --config Release
         
     - name: Package addon
       id: package
@@ -120,15 +122,29 @@ jobs:
           echo "ando_barrier_core.py was not copied into the add-on package" >&2
           exit 1
         fi
+
+        shopt -s nullglob
+        CORE_MODULES=(blender_addon/ando_barrier_core*.so blender_addon/ando_barrier_core*.pyd blender_addon/ando_barrier_core*.dylib)
+        shopt -u nullglob
+        FOUND_CORE=false
+        for module in "${CORE_MODULES[@]}"; do
+          if [ -f "$module" ]; then
+            cp "$module" addon_package/ando_barrier/
+            FOUND_CORE=true
+          fi
+        done
+        if [ "$FOUND_CORE" = false ]; then
+          echo "Compiled core module was not found in blender_addon/. Aborting package step." >&2
+          ls -al blender_addon
+          exit 1
+        fi
         
         # Copy built module
         if [ "${{ runner.os }}" = "Windows" ]; then
-          cp build/Release/ando_barrier_core*.pyd addon_package/ando_barrier/
           PACKAGE_NAME="ando_barrier_${VERSION}_windows_x64.zip"
           cd addon_package
           7z a -tzip ../${PACKAGE_NAME} ando_barrier/
         else
-          cp build/ando_barrier_core*.so addon_package/ando_barrier/
           if [ "${{ runner.os }}" = "Linux" ]; then
             PACKAGE_NAME="ando_barrier_${VERSION}_linux_x64.zip"
           else
