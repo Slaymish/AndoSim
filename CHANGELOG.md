@@ -5,6 +5,14 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2025-10-21
+
+### Fixed
+- Resolved a error when initialising realtime preview in Blender (blender_addon/ui.py).
+- Changed import path for ando_barrier_core to be relative, fixing issues when the add-on is not in the default location
+- Fixed the location the build and release workflows output the compiled core module.
+
+
 ## [1.0.1] - 2025-10-20
 
 ### Added
