@@ -211,12 +211,24 @@ class ANDO_OT_bake_simulation(Operator):
         
         # Get mesh data
         mesh_data = obj.data
-        vertices = np.array([v.co for v in mesh_data.vertices], dtype=np.float32)
-        triangles = np.array([p.vertices for p in mesh_data.polygons if len(p.vertices) == 3], dtype=np.int32)
-        
-        if len(triangles) == 0:
-            self.report({'ERROR'}, "Mesh has no triangles. Triangulate the mesh first.")
+        # Ensure we have triangulated connectivity without modifying the source mesh.
+        mesh_data.calc_loop_triangles()
+        loop_tris = getattr(mesh_data, "loop_triangles", ())
+
+        if not loop_tris:
+            self.report({'ERROR'}, "Mesh has no triangles. Add faces or apply modifiers before baking.")
             return {'CANCELLED'}
+
+        triangles = np.array([tri.vertices for tri in loop_tris], dtype=np.int32)
+        vertices = np.array([v.co for v in mesh_data.vertices], dtype=np.float32)
+
+        polygon_sides = Counter(len(poly.vertices) for poly in mesh_data.polygons)
+        non_tri_faces = sum(count for sides, count in polygon_sides.items() if sides != 3)
+        if non_tri_faces:
+            self.report(
+                {'INFO'},
+                f"Auto-triangulated {non_tri_faces} non-tri faces into {len(triangles)} triangles for baking.",
+            )
         
         self.report({'INFO'}, f"Mesh: {len(vertices)} vertices, {len(triangles)} triangles")
         

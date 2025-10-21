@@ -63,6 +63,17 @@ def _count_sim_objects(context):
     return deformable, rigid
 
 
+def _get_scene_props(context):
+    """Safely retrieve the scene-level Ando properties, or None if unavailable."""
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return None
+    props = getattr(scene, "ando_barrier", None)
+    if props is None or not hasattr(props, "rna_type"):
+        return None
+    return props
+
+
 class ANDO_PT_main_panel(Panel):
     """Main panel for Ando Barrier Physics"""
     bl_label = "Ando Barrier Physics"
@@ -73,8 +84,8 @@ class ANDO_PT_main_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
-        
+        props = _get_scene_props(context)
+
         # Check if core module is available
         core_module = get_core_module(context="UI status check")
         if core_module is None:
@@ -86,6 +97,11 @@ class ANDO_PT_main_panel(Panel):
             layout.label(text=core_module.version(), icon='INFO')
         except AttributeError:
             layout.label(text="Core module loaded", icon='INFO')
+        
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            layout.label(text="Re-enable the add-on or reopen the file.", icon='INFO')
+            return
         
         # Time stepping
         box = layout.box()
@@ -177,7 +193,10 @@ class ANDO_PT_contact_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
         
         layout.prop(props, "contact_gap_max")
         layout.prop(props, "wall_gap")
@@ -207,11 +226,18 @@ class ANDO_PT_friction_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw_header(self, context):
-        self.layout.prop(context.scene.ando_barrier, "enable_friction", text="")
+        props = _get_scene_props(context)
+        if props is None:
+            self.layout.label(text="", icon='ERROR')
+            return
+        self.layout.prop(props, "enable_friction", text="")
     
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
         
         layout.enabled = props.enable_friction
         layout.prop(props, "friction_mu")
@@ -229,7 +255,10 @@ class ANDO_PT_damping_panel(Panel):
 
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
 
         layout.prop(props, "velocity_damping")
         layout.prop(props, "contact_restitution")
@@ -245,14 +274,22 @@ class ANDO_PT_strain_limiting_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw_header(self, context):
-        self.layout.prop(context.scene.ando_barrier, "enable_strain_limiting", text="")
+        props = _get_scene_props(context)
+        if props is None:
+            self.layout.label(text="", icon='ERROR')
+            return
+        self.layout.prop(props, "enable_strain_limiting", text="")
     
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
         
         layout.enabled = props.enable_strain_limiting
         layout.prop(props, "strain_limit")
+        layout.prop(props, "strain_tau")
 
 class ANDO_PT_material_panel(Panel):
     """Material properties panel"""
@@ -266,8 +303,15 @@ class ANDO_PT_material_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
-        mat_props = props.material_properties
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
+        mat_props = getattr(props, "material_properties", None)
+        if mat_props is None or not hasattr(mat_props, "rna_type"):
+            layout.label(text="Material properties unavailable", icon='ERROR')
+            layout.label(text="Try reloading the add-on.", icon='INFO')
+            return
         
         if context.active_object and context.active_object.type == 'MESH':
             layout.label(text="Material for active mesh:")
@@ -292,7 +336,10 @@ class ANDO_PT_cache_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
-        props = context.scene.ando_barrier
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
         
         layout.prop(props, "cache_enabled")
         
@@ -316,6 +363,13 @@ class ANDO_PT_realtime_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            row = layout.row()
+            row.enabled = False
+            row.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+            return
         
         core_module = get_core_module(context="Real-time preview panel")
         core_hint = _core_path_hint(core_module)
@@ -407,6 +461,10 @@ class ANDO_PT_debug_panel(Panel):
     
     def draw(self, context):
         layout = self.layout
+        props = _get_scene_props(context)
+        if props is None:
+            layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
         
         try:
             from . import operators, visualization
@@ -423,15 +481,14 @@ class ANDO_PT_debug_panel(Panel):
             if visualization.is_visualization_enabled():
                 # Heatmap toggles
                 col = box.column(align=True)
-                col.prop(context.scene.ando_barrier, "show_gap_heatmap", text="Gap Heatmap", toggle=True)
-                col.prop(context.scene.ando_barrier, "show_strain_overlay", text="Strain Overlay", toggle=True)
+                col.prop(props, "show_gap_heatmap", text="Gap Heatmap", toggle=True)
+                col.prop(props, "show_strain_overlay", text="Strain Overlay", toggle=True)
 
             rigid_count = sim_state['stats'].get('num_rigid_bodies', 0)
             if rigid_count:
                 layout.label(text=f"Rigid bodies in solver: {rigid_count}", icon='CUBE')
                 
                 # Show legend only if heatmaps are off
-                props = context.scene.ando_barrier
                 if not props.show_gap_heatmap and not props.show_strain_overlay:
                     box.separator()
                     box.label(text="Contact Legend:", icon='DOT')
