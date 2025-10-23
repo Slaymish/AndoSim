@@ -112,7 +112,28 @@ print_info "Running pre-release checks..."
 echo "$VERSION" > VERSION
 print_success "Updated VERSION file to $VERSION"
 
-# 2. Ensure fallback shim is bundled with the Blender add-on
+# 2. Update version in blender_manifest.toml
+if [ -f "blender_addon/blender_manifest.toml" ]; then
+    sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" blender_addon/blender_manifest.toml
+    rm -f blender_addon/blender_manifest.toml.bak
+    print_success "Updated blender_manifest.toml to $VERSION"
+else
+    print_warning "blender_addon/blender_manifest.toml not found"
+fi
+
+# 3. Update version in __init__.py bl_info
+if [ -f "blender_addon/__init__.py" ]; then
+    # Convert X.Y.Z to (X, Y, Z) for bl_info
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+    PATCH=${PATCH%%-*}  # Remove any suffix like -rc.1
+    sed -i.bak "s/\"version\": ([0-9]*, [0-9]*, [0-9]*)/\"version\": ($MAJOR, $MINOR, $PATCH)/" blender_addon/__init__.py
+    rm -f blender_addon/__init__.py.bak
+    print_success "Updated __init__.py bl_info to ($MAJOR, $MINOR, $PATCH)"
+else
+    print_warning "blender_addon/__init__.py not found"
+fi
+
+# 4. Ensure fallback shim is bundled with the Blender add-on
 if [ -f "blender_addon/ando_barrier_core.py" ]; then
     print_success "Confirmed blender_addon/ando_barrier_core.py is present for packaging"
 else
@@ -121,7 +142,7 @@ else
     exit 1
 fi
 
-# 3. Build check
+# 5. Build check
 print_info "Testing build..."
 if ./build.sh -c > /dev/null 2>&1; then
     print_success "Build successful"
@@ -131,7 +152,7 @@ else
     exit 1
 fi
 
-# 4. Check CHANGELOG
+# 6. Check CHANGELOG
 if ! grep -q "\[$VERSION\]" CHANGELOG.md; then
     print_warning "CHANGELOG.md doesn't contain [$VERSION] section"
     echo ""
@@ -177,7 +198,7 @@ fi
 print_info "Creating release $TAG..."
 
 # Commit version bump
-git add VERSION CHANGELOG.md
+git add VERSION CHANGELOG.md blender_addon/blender_manifest.toml blender_addon/__init__.py
 git commit -m "Bump version to $VERSION" || print_warning "No changes to commit"
 
 if [ "$DRY_RUN" = false ]; then
