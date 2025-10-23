@@ -14,6 +14,8 @@
 
 using namespace ando_barrier;
 
+constexpr Real kNormalEpsilon = static_cast<Real>(1e-8);
+
 void test_stiffness_contact_point_triangle() {
     std::cout << "Testing point-triangle contact stiffness..." << std::endl;
 
@@ -230,7 +232,8 @@ void test_barrier_pin_gradient() {
     
     // Compute gradient
     VecX gradient = VecX::Zero(3);
-    Barrier::compute_pin_gradient(0, pin_target, state, g_max, k_bar, gradient);
+    Barrier::compute_pin_gradient(0, pin_target, state, g_max, k_bar,
+                                  kNormalEpsilon, gradient);
     
     // Gradient should point away from target (repulsive force)
     assert(gradient[0] < 0.0);  // Force in -x direction
@@ -255,8 +258,8 @@ void test_barrier_wall_gradient() {
     
     // Compute gradient
     VecX gradient = VecX::Zero(3);
-    Barrier::compute_wall_gradient(0, wall_normal, wall_offset, state, 
-                                   g_max, k_bar, gradient);
+    Barrier::compute_wall_gradient(0, wall_normal, wall_offset, state,
+                                   g_max, k_bar, kNormalEpsilon, gradient);
     
     // Gradient should point upward (away from wall)
     assert(std::abs(gradient[0]) < 0.01);

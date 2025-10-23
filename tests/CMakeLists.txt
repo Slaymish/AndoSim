@@ -7,6 +7,7 @@ add_executable(test_basic
     ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
     ${CMAKE_SOURCE_DIR}/src/core/state.cpp
     ${CMAKE_SOURCE_DIR}/src/core/elasticity.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/strain_limiting.cpp
     ${CMAKE_SOURCE_DIR}/src/core/stiffness.cpp
     ${CMAKE_SOURCE_DIR}/src/core/collision.cpp
     ${CMAKE_SOURCE_DIR}/src/core/line_search.cpp
@@ -15,6 +16,7 @@ add_executable(test_basic
     ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
     ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
     ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/matrix_assembly.cpp
 )
 target_include_directories(test_basic PRIVATE 
     ${CMAKE_SOURCE_DIR}/src/core
@@ -31,6 +33,7 @@ add_executable(test_barrier_derivatives
     ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
     ${CMAKE_SOURCE_DIR}/src/core/state.cpp
     ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/matrix_assembly.cpp
 )
 target_include_directories(test_barrier_derivatives PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
@@ -68,6 +71,8 @@ add_executable(test_hybrid
     ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
     ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
     ${CMAKE_SOURCE_DIR}/src/core/barrier.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/strain_limiting.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/matrix_assembly.cpp
 )
 target_include_directories(test_hybrid PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core

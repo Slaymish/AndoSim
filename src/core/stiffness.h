@@ -56,15 +56,4 @@ public:
     static void enforce_spd(Mat3& H, Real epsilon = 1e-8);
 };
 
-// Placeholder classes for future tasks (Task 5-13)
-class StrainLimiting {
-public:
-    static Real compute_energy(const Mat2& F, Real limit, Real tau, Real epsilon);
-};
-
-class Friction {
-public:
-    static Real compute_energy();
-};
-
 } // namespace ando_barrier

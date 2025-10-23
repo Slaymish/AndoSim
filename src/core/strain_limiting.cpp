@@ -127,9 +127,6 @@ void StrainLimiting::rebuild_constraints(
     Real epsilon = params.strain_epsilon > Real(0.0)
         ? to_fraction(params.strain_epsilon)
         : tau;
-    Real svd_epsilon = std::max(params.strain_svd_epsilon, Real(1e-8));
-    Real svd_epsilon = std::max(params.strain_svd_epsilon, Real(1e-8));
-
     if (epsilon <= Real(0.0)) {
         return; // Nothing to enforce
     }
@@ -210,6 +207,7 @@ void StrainLimiting::accumulate_gradient(
     Real epsilon = params.strain_epsilon > Real(0.0)
         ? to_fraction(params.strain_epsilon)
         : tau;
+    const Real svd_epsilon = std::max(params.strain_svd_epsilon, Real(1e-8));
 
     for (const auto& constraint : constraints.strain_limits) {
         if (!constraint.active) {
@@ -287,6 +285,7 @@ void StrainLimiting::accumulate_hessian(
     Real epsilon = params.strain_epsilon > Real(0.0)
         ? to_fraction(params.strain_epsilon)
         : tau;
+    const Real svd_epsilon = std::max(params.strain_svd_epsilon, Real(1e-8));
 
     for (const auto& constraint : constraints.strain_limits) {
         if (!constraint.active) {
@@ -376,4 +375,3 @@ void StrainLimiting::accumulate_hessian(
 }
 
 } // namespace ando_barrier
-
