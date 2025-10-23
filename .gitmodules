@@ -1,0 +1,3 @@
+[submodule "extern/ppf-contact-solver"]
+	path = extern/ppf-contact-solver
+	url = git@github.com:Slaymish/ppf-contact-solver.git
