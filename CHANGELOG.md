@@ -5,6 +5,19 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-10-23
+
+### Added
+
+- Added a new ppf_adapter module to manage interactions with the PPF solver.
+- Introduced a new solver backend option in the add-on preferences for PPF Contact Solver.
+- Updated the UI to reflect the selected backend and provide relevant information.
+
+### Documentation
+
+- Enhanced the README and quick start guides to include instructions for using the PPF backend.
+- Updated .gitignore to exclude PPF build artifacts."
+
 ## [1.0.3] - 2025-10-21
 
 ### Fixed
