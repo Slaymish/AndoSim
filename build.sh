@@ -56,10 +56,14 @@ done
 
 # Resolve Python interpreter
 if [ -z "$PYTHON_EXECUTABLE" ]; then
-    for candidate in python3.11 python3; do
+    # Try python3 first (more universally available), then python3.11
+    for candidate in python3 python3.11; do
         if command -v "$candidate" >/dev/null 2>&1; then
-            PYTHON_EXECUTABLE="$(command -v "$candidate")"
-            break
+            # Verify it actually works before using it
+            if "$candidate" --version >/dev/null 2>&1; then
+                PYTHON_EXECUTABLE="$(command -v "$candidate")"
+                break
+            fi
         fi
     done
 fi
