@@ -219,9 +219,7 @@ Real Stiffness::compute_pin_stiffness(
     const Mat3& H_block,
     Real min_gap
 ) {
-    // Base inertial term: m/Δt²
-    Real k_inertial = mass / (dt * dt);
-
+    (void)dt;
     // Elasticity contribution along pin direction
     Mat3 H = H_block;
     enforce_spd(H);
@@ -237,9 +235,9 @@ Real Stiffness::compute_pin_stiffness(
     Real k_elastic = std::max(Real(0.0), dir.dot(H * dir));
 
     Real g_hat = std::max(std::max(length, min_gap), Real(1e-12));
-    Real k_takeover = mass / (g_hat * g_hat);
+    Real k_inertial = mass / (g_hat * g_hat);
 
-    return k_inertial + k_elastic + k_takeover;
+    return k_inertial + k_elastic;
 }
 
 Real Stiffness::compute_wall_stiffness(
