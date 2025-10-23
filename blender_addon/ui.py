@@ -10,6 +10,9 @@ _LOGGER = logging.getLogger(__name__)
 _LOGGED_REALTIME_CORE_FAILURE = False
 _LOGGED_OPERATOR_IMPORT_FAILURE = False
 
+_BACKEND_ANDO = "ANDO"
+_BACKEND_PPF = "PPF"
+
 
 def _core_path_hint(core_module=None) -> str:
     """Return the most relevant path to the compiled core module."""
@@ -74,6 +77,18 @@ def _get_scene_props(context):
     return props
 
 
+def _active_backend(context) -> str:
+    """Read the active solver backend from add-on preferences."""
+
+    try:
+        addon = context.preferences.addons.get(__package__)
+    except AttributeError:
+        return _BACKEND_ANDO
+    if not addon:
+        return _BACKEND_ANDO
+    return getattr(addon.preferences, "solver_backend", _BACKEND_ANDO)
+
+
 class ANDO_PT_main_panel(Panel):
     """Main panel for Ando Barrier Physics"""
     bl_label = "Ando Barrier Physics"
@@ -86,17 +101,31 @@ class ANDO_PT_main_panel(Panel):
         layout = self.layout
         props = _get_scene_props(context)
 
-        # Check if core module is available
-        core_module = get_core_module(context="UI status check")
-        if core_module is None:
-            layout.label(text="Core module not loaded", icon='ERROR')
-            layout.label(text="Build C++ extension first")
-            return
+        backend = _active_backend(context)
+        backend_label = "Ando Core" if backend == _BACKEND_ANDO else "PPF Contact Solver"
+        layout.label(text=f"Backend: {backend_label}", icon='MOD_PHYSICS')
 
-        try:
-            layout.label(text=core_module.version(), icon='INFO')
-        except AttributeError:
-            layout.label(text="Core module loaded", icon='INFO')
+        if backend == _BACKEND_ANDO:
+            core_module = get_core_module(context="UI status check")
+            if core_module is None:
+                layout.label(text="Core module not loaded", icon='ERROR')
+                layout.label(text="Build C++ extension first", icon='INFO')
+                return
+
+            try:
+                layout.label(text=core_module.version(), icon='INFO')
+            except AttributeError:
+                layout.label(text="Core module loaded", icon='INFO')
+        else:
+            try:
+                from . import ppf_adapter
+            except Exception as exc:  # pragma: no cover - Blender import guard
+                layout.label(text="PPF adapter import failed", icon='ERROR')
+                layout.label(text=str(exc), icon='INFO')
+            else:
+                available, message = ppf_adapter.ppf_status()
+                icon = 'CHECKMARK' if available else 'ERROR'
+                layout.label(text=message, icon=icon)
         
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -196,6 +225,10 @@ class ANDO_PT_contact_panel(Panel):
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
+            return
+
+        if _active_backend(context) == _BACKEND_PPF:
+            layout.label(text="Debug overlays are unavailable for the PPF backend.", icon='INFO')
             return
         
         layout.prop(props, "contact_gap_max")
@@ -369,6 +402,47 @@ class ANDO_PT_realtime_panel(Panel):
             row = layout.row()
             row.enabled = False
             row.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+            return
+
+        backend = _active_backend(context)
+        if backend == _BACKEND_PPF:
+            try:
+                from . import operators, ppf_adapter
+            except ImportError as exc:  # pragma: no cover - Blender import guard
+                layout.label(text="PPF controls unavailable.", icon='ERROR')
+                layout.label(text=str(exc), icon='INFO')
+                row = layout.row()
+                row.enabled = False
+                row.operator("ando.init_realtime_simulation", text="Start PPF Session", icon='PLAY')
+                return
+
+            available, message = ppf_adapter.ppf_status()
+            icon = 'CHECKMARK' if available else 'ERROR'
+            layout.label(text=message, icon=icon)
+
+            state = getattr(operators, "_ppf_state", {})
+            running = state.get('running', False)
+            last_frame = state.get('last_frame', -1)
+            session_dir = state.get('session_dir')
+
+            row = layout.row()
+            row.enabled = available and not running
+            button_text = "Start PPF Session" if not running else "Solver Running"
+            row.operator("ando.init_realtime_simulation", text=button_text, icon='PLAY')
+
+            if session_dir:
+                layout.label(text=f"Output: {session_dir}", icon='FILE_FOLDER')
+
+            if running:
+                layout.label(text="Solver running; results stream back continuously.", icon='INFO')
+                if last_frame is not None and last_frame >= 0:
+                    layout.label(text=f"Last frame received: {last_frame}", icon='TIME')
+                layout.operator("ando.reset_realtime_simulation", text="Terminate Session", icon='CANCEL')
+            else:
+                status_icon = 'PLAY' if available else 'ERROR'
+                idle_message = "Ready to launch PPF session" if available else "Resolve issues above to enable PPF"
+                layout.label(text=idle_message, icon=status_icon)
+                layout.operator("ando.reset_realtime_simulation", text="Clear Session Data", icon='FILE_REFRESH')
             return
         
         core_module = get_core_module(context="Real-time preview panel")

@@ -24,6 +24,7 @@ cp -r /path/to/BlenderSim/blender_addon ~/.config/blender/3.6/scripts/addons/and
 2. Search: "Ando"
 3. Enable checkbox: "Physics: Ando Barrier Physics"
 4. Verify version appears in 3D View sidebar
+5. Pick a **Solver backend** (Ando Core or PPF Contact Solver) from the add-on preferences before heading back to the viewport.
 
 ---
 
@@ -64,9 +65,8 @@ Material Properties:
 ### Step 4: Run Real-Time Simulation
 ```
 Real-Time Preview panel:
-  1. Click "Initialize" → Wait for confirmation
-  2. Click "Play" → Watch cloth fall and drape
-  3. ESC to stop, or click "Pause"
+  - **Ando Core:** Click "Initialize" → Wait for confirmation → Click "Play" to watch the cloth fall. ESC stops playback, "Pause" toggles.
+  - **PPF backend:** Click "Start PPF Session" to launch the CUDA solver. The panel shows streaming status and exposes a "Terminate Session" button when you want to stop.
 ```
 
 ### Step 5 (Optional): Debug Visualization

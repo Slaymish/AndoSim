@@ -45,3 +45,8 @@ output/simple_fall/
 output/cloth_wall/
 demos/output/
 output/
+
+# in your repo .gitignore
+extern/ppf-contact-solver/build/
+extern/ppf-contact-solver/.venv/
+

@@ -38,6 +38,22 @@ def _ensure_native_core(reporter, module, context: str) -> bool:
     return False
 
 
+_BACKEND_ANDO = "ANDO"
+_BACKEND_PPF = "PPF"
+
+
+def _active_backend(context) -> str:
+    """Read the currently selected solver backend from add-on preferences."""
+
+    try:
+        addon = context.preferences.addons.get(__package__)
+    except AttributeError:
+        return _BACKEND_ANDO
+    if not addon:
+        return _BACKEND_ANDO
+    return getattr(addon.preferences, "solver_backend", _BACKEND_ANDO)
+
+
 class ANDO_OT_select_core_module(Operator):
     """Allow users to load a compiled ando_barrier_core module manually."""
 
@@ -264,6 +280,14 @@ _sim_state = {
     'rigid_objects': [],
 }
 
+_ppf_state = {
+    'running': False,
+    'last_frame': -1,
+    'session_dir': None,
+    'status': "",
+    'operator': None,
+}
+
 class ANDO_OT_bake_simulation(Operator):
     """Bake Ando Barrier simulation to cache"""
     bl_idname = "ando.bake_simulation"
@@ -271,6 +295,11 @@ class ANDO_OT_bake_simulation(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
+        backend = _active_backend(context)
+        if backend != _BACKEND_ANDO:
+            self.report({'ERROR'}, "Baking is only available with the Ando backend.")
+            return {'CANCELLED'}
+
         props = context.scene.ando_barrier
         
         abc = get_core_module(context="Bake Simulation operator")
@@ -571,21 +600,55 @@ class ANDO_OT_add_wall_constraint(Operator):
 
 class ANDO_OT_init_realtime_simulation(Operator):
     """Initialize real-time simulation"""
+
     bl_idname = "ando.init_realtime_simulation"
     bl_label = "Initialize Real-Time Simulation"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     def execute(self, context):
         global _sim_state
+        global _ppf_state
+
+        backend = _active_backend(context)
+        self._using_ppf = backend == _BACKEND_PPF
+
+        if self._using_ppf:
+            try:
+                from . import ppf_adapter
+            except Exception as exc:  # pragma: no cover - Blender import guard
+                message = f"Failed to import PPF adapter: {exc}"
+                self.report({'ERROR'}, message)
+                _ppf_state['running'] = False
+                _ppf_state['operator'] = None
+                _ppf_state['status'] = message
+                _ppf_state['session_dir'] = None
+                return {'CANCELLED'}
+
+            result = ppf_adapter.PPFSession.start_modal(self, context)
+            info = getattr(self, "_ppf", None) or {}
+            outdir = info.get('outdir')
+            _ppf_state['running'] = result == {'RUNNING_MODAL'}
+            _ppf_state['last_frame'] = info.get('last_frame', -1)
+            _ppf_state['session_dir'] = str(outdir) if outdir else None
+            _ppf_state['status'] = "Running" if _ppf_state['running'] else ppf_adapter.ppf_status_message()
+            _ppf_state['operator'] = self if _ppf_state['running'] else None
+            return result
+
+        # Reset any lingering PPF state when running the native backend
+        _ppf_state['running'] = False
+        _ppf_state['operator'] = None
+        _ppf_state['status'] = ""
+        _ppf_state['session_dir'] = None
+
         props = context.scene.ando_barrier
-        
+
         abc = get_core_module(context="Real-time simulation initialization")
         if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available")
             return {'CANCELLED'}
         if not _ensure_native_core(self.report, abc, "Real-time simulation"):
             return {'CANCELLED'}
-        
+
         obj = context.active_object
         if not obj or obj.type != 'MESH':
             self.report({'ERROR'}, "No mesh object selected")
@@ -604,11 +667,11 @@ class ANDO_OT_init_realtime_simulation(Operator):
             dtype=np.float32,
         )
         triangles = np.array([p.vertices for p in mesh_data.polygons if len(p.vertices) == 3], dtype=np.int32)
-        
+
         if len(triangles) == 0:
             self.report({'ERROR'}, "Mesh has no triangles")
             return {'CANCELLED'}
-        
+
         # Initialize material
         mat_props = props.material_properties
         material = abc.Material()
@@ -616,7 +679,7 @@ class ANDO_OT_init_realtime_simulation(Operator):
         material.poisson_ratio = mat_props.poisson_ratio
         material.density = mat_props.density
         material.thickness = mat_props.thickness
-        
+
         # Initialize parameters
         params = abc.SimParams()
         params.dt = props.dt / 1000.0
@@ -636,16 +699,16 @@ class ANDO_OT_init_realtime_simulation(Operator):
         params.enable_strain_limiting = props.enable_strain_limiting
         params.strain_limit = props.strain_limit
         params.strain_tau = props.strain_tau
-        
+
         # Initialize simulation objects
         mesh = abc.Mesh()
         mesh.initialize(vertices, triangles, material)
-        
+
         state = abc.State()
         state.initialize(mesh)
-        
+
         constraints = abc.Constraints()
-        
+
         # Extract pin constraints
         pin_group_name = "ando_pins"
         num_pins_added = 0
@@ -662,7 +725,7 @@ class ANDO_OT_init_realtime_simulation(Operator):
                         num_pins_added += 1
                 except RuntimeError:
                     pass
-        
+
         # Add ground plane
         if props.enable_ground_plane:
             ground_normal = np.array([0.0, 0.0, 1.0], dtype=np.float32)
@@ -698,6 +761,70 @@ class ANDO_OT_init_realtime_simulation(Operator):
         self.report({'INFO'}, f"Initialized: {len(vertices)} vertices, {num_pins_added} pins")
         return {'FINISHED'}
 
+    def modal(self, context, event):
+        global _ppf_state
+
+        if not getattr(self, "_using_ppf", False):
+            return {'FINISHED'}
+
+        try:
+            from . import ppf_adapter
+        except Exception as exc:  # pragma: no cover - Blender import guard
+            self.report({'ERROR'}, f"PPF adapter error: {exc}")
+            _ppf_state['running'] = False
+            _ppf_state['operator'] = None
+            _ppf_state['status'] = str(exc)
+            _ppf_state['session_dir'] = None
+            return {'CANCELLED'}
+
+        if event.type == 'ESC':
+            ppf_adapter.PPFSession.cleanup(self)
+            _ppf_state['running'] = False
+            _ppf_state['operator'] = None
+            _ppf_state['status'] = "Cancelled"
+            _ppf_state['session_dir'] = None
+            return {'CANCELLED'}
+
+        status = ppf_adapter.PPFSession.modal_tick(self, context, event)
+        info = getattr(self, "_ppf", None)
+        if info:
+            _ppf_state['last_frame'] = info.get('last_frame', -1)
+            outdir = info.get('outdir')
+            if outdir:
+                _ppf_state['session_dir'] = str(outdir)
+
+        if status in ({'FINISHED'}, {'CANCELLED'}):
+            _ppf_state['running'] = False
+            _ppf_state['operator'] = None
+            _ppf_state['status'] = "Finished" if status == {'FINISHED'} else "Cancelled"
+            if status == {'CANCELLED'}:
+                ppf_adapter.PPFSession.cleanup(self)
+            if status == {'FINISHED'} and info and info.get('outdir'):
+                _ppf_state['session_dir'] = str(info['outdir'])
+            return status
+
+        return status
+
+    def cancel(self, context):
+        global _ppf_state
+
+        if getattr(self, "_using_ppf", False):
+            try:
+                from . import ppf_adapter
+            except Exception:
+                _ppf_state['running'] = False
+                _ppf_state['operator'] = None
+                _ppf_state['status'] = "Cancelled"
+                _ppf_state['session_dir'] = None
+                return {'CANCELLED'}
+
+            ppf_adapter.PPFSession.cleanup(self)
+            _ppf_state['running'] = False
+            _ppf_state['operator'] = None
+            _ppf_state['status'] = "Cancelled"
+            _ppf_state['session_dir'] = None
+        return {'CANCELLED'}
+
 class ANDO_OT_step_simulation(Operator):
     """Step simulation forward one frame"""
     bl_idname = "ando.step_simulation"
@@ -707,6 +834,11 @@ class ANDO_OT_step_simulation(Operator):
     def execute(self, context):
         global _sim_state
         
+        backend = _active_backend(context)
+        if backend != _BACKEND_ANDO:
+            self.report({'WARNING'}, "Real-time stepping is only available with the Ando backend.")
+            return {'CANCELLED'}
+
         if not _sim_state['initialized']:
             self.report({'WARNING'}, "Initialize simulation first")
             return {'CANCELLED'}
@@ -915,6 +1047,24 @@ class ANDO_OT_reset_realtime_simulation(Operator):
     
     def execute(self, context):
         global _sim_state
+        global _ppf_state
+
+        backend = _active_backend(context)
+        if backend == _BACKEND_PPF:
+            operator = _ppf_state.get('operator')
+            if operator:
+                try:
+                    from . import ppf_adapter
+                    ppf_adapter.PPFSession.cleanup(operator)
+                except Exception:
+                    pass
+            _ppf_state['running'] = False
+            _ppf_state['operator'] = None
+            _ppf_state['status'] = "Reset"
+            _ppf_state['session_dir'] = None
+            _ppf_state['last_frame'] = -1
+            self.report({'INFO'}, "PPF session cleared")
+            return {'FINISHED'}
         
         # Clear simulation state
         _sim_state['mesh'] = None
@@ -958,6 +1108,9 @@ class ANDO_OT_toggle_play_simulation(Operator):
     _timer = None
     
     def modal(self, context, event):
+        if _active_backend(context) != _BACKEND_ANDO:
+            return {'CANCELLED'}
+        
         global _sim_state
         
         if event.type == 'ESC' or not _sim_state['playing']:
@@ -970,6 +1123,10 @@ class ANDO_OT_toggle_play_simulation(Operator):
         return {'PASS_THROUGH'}
     
     def execute(self, context):
+        if _active_backend(context) != _BACKEND_ANDO:
+            self.report({'WARNING'}, "Interactive playback is only available with the Ando backend.")
+            return {'CANCELLED'}
+
         global _sim_state
         
         if not _sim_state['initialized']:
@@ -1009,6 +1166,10 @@ class ANDO_OT_toggle_debug_visualization(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
+        if _active_backend(context) != _BACKEND_ANDO:
+            self.report({'INFO'}, "Debug visualization is only available with the Ando backend.")
+            return {'CANCELLED'}
+
         from . import visualization
         
         if visualization.is_visualization_enabled():

@@ -28,7 +28,31 @@ from . import operators
 from . import properties
 from . import parameter_update
 
+class AndoPrefs(bpy.types.AddonPreferences):
+    bl_idname = __package__
+
+    solver_backend: bpy.props.EnumProperty(
+        name="Solver backend",
+        items=[("ANDO", "Ando Core", ""), ("PPF", "PPF Contact Solver", "")],
+        default="ANDO",
+    )
+
+    def draw(self, ctx):
+        layout = self.layout
+        layout.prop(self, "solver_backend")
+
+def get_backend(ctx):
+    try:
+        addon = ctx.preferences.addons.get(__package__)
+    except AttributeError:
+        return "ANDO"
+    if not addon:
+        return "ANDO"
+    return getattr(addon.preferences, "solver_backend", "ANDO")
+
+
 def register():
+    bpy.utils.register_class(AndoPrefs)
     properties.register()
     ui.register()
     operators.register()
@@ -36,6 +60,7 @@ def register():
     print("Ando Barrier Physics add-on registered")
 
 def unregister():
+    bpy.utils.unregister_class(AndoPrefs)
     parameter_update.unregister()
     operators.unregister()
     ui.unregister()

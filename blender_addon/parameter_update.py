@@ -8,6 +8,20 @@ from bpy.types import Operator
 
 from ._core_loader import get_core_module
 
+_BACKEND_ANDO = "ANDO"
+
+
+def _active_backend(context) -> str:
+    """Read active backend from add-on preferences."""
+
+    try:
+        addon = context.preferences.addons.get(__package__)
+    except AttributeError:
+        return _BACKEND_ANDO
+    if not addon:
+        return _BACKEND_ANDO
+    return getattr(addon.preferences, "solver_backend", _BACKEND_ANDO)
+
 class ANDO_OT_update_parameters(Operator):
     """Update simulation parameters without re-initializing"""
     bl_idname = "ando.update_parameters"
@@ -18,6 +32,10 @@ class ANDO_OT_update_parameters(Operator):
         from . import operators
         sim_state = operators._sim_state
         
+        if _active_backend(context) != _BACKEND_ANDO:
+            self.report({'WARNING'}, "Parameter hot-reload is only available with the Ando backend.")
+            return {'CANCELLED'}
+
         if not sim_state['initialized']:
             self.report({'WARNING'}, "Simulation not initialized")
             return {'CANCELLED'}
