@@ -4,6 +4,7 @@
 #include "mesh.h"
 #include "state.h"
 #include "constraints.h"
+#include "collision.h"
 
 namespace ando_barrier {
 
@@ -14,13 +15,10 @@ public:
     // Contact stiffness (Eq. 5): k = m/Δt² + n·(H n)
     // With m/ĝ² takeover near tiny gaps
     static Real compute_contact_stiffness(
-        Real mass,              // Vertex or average mass
-        Real dt,                // Time step
-        Real gap,               // Current gap distance
-        Real g_max,             // Barrier activation distance (ĝ)
-        const Vec3& normal,     // Contact normal
-        const Mat3& H_block,    // Elasticity Hessian 3×3 block for this vertex
-        Real min_gap            // Numerical minimum gap
+        const ContactPair& contact,
+        const State& state,
+        Real dt,
+        const SparseMatrix& H_elastic
     );
     
     // Pin stiffness (Eq. 6): k_i = m_i/Δt² + w_i·(H_i w_i)
@@ -46,7 +44,7 @@ public:
     static void compute_all_stiffnesses(
         const Mesh& mesh,
         const State& state,
-        const Constraints& constraints,
+        Constraints& constraints,
         Real dt,
         const SparseMatrix& H_elastic  // Global elasticity Hessian
     );
