@@ -109,8 +109,10 @@ if(USE_DOUBLE_PRECISION)
 endif()
 
 # Installation
+# Note: On Windows, pybind11 modules are RUNTIME (not LIBRARY), so we specify both
 install(TARGETS ando_barrier_core 
     LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/blender_addon
+    RUNTIME DESTINATION ${CMAKE_SOURCE_DIR}/blender_addon
 )
 
 # Tests (optional)

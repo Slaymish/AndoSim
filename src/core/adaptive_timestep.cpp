@@ -81,7 +81,7 @@ Real AdaptiveTimestep::smooth_dt_change(
 
 Real AdaptiveTimestep::compute_min_edge_length(const Mesh& mesh) {
     if (mesh.edges.empty()) {
-        return kMinEdgeLengthThreshold;
+        return static_cast<Real>(0.0);
     }
 
     Real min_edge_sq = std::numeric_limits<Real>::max();
@@ -117,13 +117,13 @@ Real AdaptiveTimestep::compute_min_edge_length(const Mesh& mesh) {
     }
 
     if (!found_valid_edge) {
-        return kMinEdgeLengthThreshold;
+        return static_cast<Real>(0.0);
     }
 
     const Real min_edge = std::sqrt(std::max(min_edge_sq, static_cast<Real>(0.0)));
 
     if (!std::isfinite(min_edge)) {
-        return kMinEdgeLengthThreshold;
+        return static_cast<Real>(0.0);
     }
 
     return min_edge;

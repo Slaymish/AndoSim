@@ -316,3 +316,12 @@ def _try_import_bpy():
         return None
 
     return bpy
+
+
+if __name__ == "__main__":  # Quick test when executed directly.
+    try:
+        core = _import_core()
+    except ImportError as err:
+        print(f"Import failed: {err}")
+    else:
+        print(f"Imported core module: {core}")

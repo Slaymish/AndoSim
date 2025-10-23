@@ -3,6 +3,10 @@
 #include <pybind11/stl.h>
 #include <pybind11/eigen.h>
 
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
 #include "types.h"
 #include "mesh.h"
 #include "state.h"
@@ -34,6 +38,27 @@ PYBIND11_MODULE(ando_barrier_core, m) {
     // Material class
     py::class_<Material>(m, "Material")
         .def(py::init<>())
+        .def(py::init([](py::kwargs kwargs) {
+            Material material;
+            for (auto item : kwargs) {
+                const std::string key = py::cast<std::string>(item.first);
+                if (key == "youngs_modulus") {
+                    material.youngs_modulus = py::cast<Real>(item.second);
+                } else if (key == "poisson_ratio") {
+                    material.poisson_ratio = py::cast<Real>(item.second);
+                } else if (key == "density") {
+                    material.density = py::cast<Real>(item.second);
+                } else if (key == "thickness") {
+                    material.thickness = py::cast<Real>(item.second);
+                } else if (key == "bending_stiffness") {
+                    material.bending_stiffness = py::cast<Real>(item.second);
+                } else {
+                    const std::string message = "Unknown material property: " + key;
+                    throw py::attribute_error(message.c_str());
+                }
+            }
+            return material;
+        }))
         .def_readwrite("youngs_modulus", &Material::youngs_modulus)
         .def_readwrite("poisson_ratio", &Material::poisson_ratio)
         .def_readwrite("density", &Material::density)
@@ -74,22 +99,58 @@ PYBIND11_MODULE(ando_barrier_core, m) {
     // Mesh class
     py::class_<Mesh>(m, "Mesh")
         .def(py::init<>())
-        .def("initialize", [](Mesh& mesh, py::array_t<Real> vertices, py::array_t<int32_t> triangles, const Material& mat) {
-            auto verts_arr = vertices.unchecked<2>();
-            auto tris_arr = triangles.unchecked<2>();
-            
+        .def("initialize", [](Mesh& mesh, py::object vertices_obj, py::object triangles_obj, const Material& mat) {
+            auto vertices = py::array_t<Real, py::array::c_style | py::array::forcecast>::ensure(vertices_obj);
+            if (!vertices || vertices.ndim() != 2 || vertices.shape(1) != 3) {
+                throw py::value_error("vertices must be an array of shape (N, 3)");
+            }
+
             std::vector<Vec3> verts;
+            verts.reserve(vertices.shape(0));
+            auto verts_arr = vertices.unchecked<2>();
             for (py::ssize_t i = 0; i < verts_arr.shape(0); ++i) {
-                verts.push_back(Vec3(verts_arr(i, 0), verts_arr(i, 1), verts_arr(i, 2)));
+                verts.emplace_back(verts_arr(i, 0), verts_arr(i, 1), verts_arr(i, 2));
             }
-            
+
+            py::array triangles_array = py::array::ensure(triangles_obj);
+            if (!triangles_array) {
+                throw py::value_error("triangles must be array-like");
+            }
+
+            py::array reshaped;
+            if (triangles_array.ndim() == 1) {
+                if (triangles_array.shape(0) % 3 != 0) {
+                    throw py::value_error("triangles must contain a multiple of 3 indices");
+                }
+                const py::array::ShapeContainer shape{
+                    triangles_array.shape(0) / 3,
+                    static_cast<py::ssize_t>(3)
+                };
+                reshaped = triangles_array.reshape(shape);
+            } else if (triangles_array.ndim() == 2) {
+                if (triangles_array.shape(1) != 3) {
+                    throw py::value_error("triangles must have shape (M, 3)");
+                }
+                reshaped = triangles_array;
+            } else {
+                throw py::value_error("triangles must be a 1D or 2D array");
+            }
+
+            auto triangles = py::array_t<int32_t, py::array::c_style | py::array::forcecast>::ensure(reshaped);
+            if (!triangles) {
+                throw py::value_error("triangles must be convertible to int32");
+            }
+
             std::vector<Triangle> tris;
+            tris.reserve(triangles.shape(0));
+            auto tris_arr = triangles.unchecked<2>();
             for (py::ssize_t i = 0; i < tris_arr.shape(0); ++i) {
-                tris.push_back(Triangle{Index(tris_arr(i, 0)), Index(tris_arr(i, 1)), Index(tris_arr(i, 2))});
+                tris.emplace_back(Index(tris_arr(i, 0)), Index(tris_arr(i, 1)), Index(tris_arr(i, 2)));
             }
-            
+
             mesh.initialize(verts, tris, mat);
-        }, "Initialize mesh from numpy arrays")
+        }, py::arg("vertices"), py::arg("triangles"), py::arg("material"),
+           "Initialize mesh from array-like vertex and triangle data")
         .def("num_vertices", &Mesh::num_vertices)
         .def("num_triangles", &Mesh::num_triangles)
         .def("get_vertices", [](const Mesh& mesh) {
@@ -128,6 +189,55 @@ PYBIND11_MODULE(ando_barrier_core, m) {
                     mesh.vertices[i][1] = pos(i, 1);
                     mesh.vertices[i][2] = pos(i, 2);
                 }
+            })
+        .def_property("triangles",
+            [](const Mesh& mesh) {
+                py::array_t<int32_t> result({mesh.num_triangles(), size_t(3)});
+                auto r = result.mutable_unchecked<2>();
+                for (size_t i = 0; i < mesh.num_triangles(); ++i) {
+                    r(i, 0) = mesh.triangles[i].v[0];
+                    r(i, 1) = mesh.triangles[i].v[1];
+                    r(i, 2) = mesh.triangles[i].v[2];
+                }
+                return result;
+            },
+            [](Mesh& mesh, py::object triangles_obj) {
+                py::array triangles_array = py::array::ensure(triangles_obj);
+                if (!triangles_array) {
+                    throw py::value_error("triangles must be array-like");
+                }
+
+                py::array reshaped;
+                if (triangles_array.ndim() == 1) {
+                    if (triangles_array.shape(0) % 3 != 0) {
+                        throw py::value_error("triangles must contain a multiple of 3 indices");
+                    }
+                    const py::array::ShapeContainer shape{
+                        triangles_array.shape(0) / 3,
+                        static_cast<py::ssize_t>(3)
+                    };
+                    reshaped = triangles_array.reshape(shape);
+                } else if (triangles_array.ndim() == 2) {
+                    if (triangles_array.shape(1) != 3) {
+                        throw py::value_error("triangles must have shape (M, 3)");
+                    }
+                    reshaped = triangles_array;
+                } else {
+                    throw py::value_error("triangles must be 1D or 2D array-like");
+                }
+
+                auto triangles = py::array_t<int32_t, py::array::c_style | py::array::forcecast>::ensure(reshaped);
+                if (!triangles) {
+                    throw py::value_error("triangles must be convertible to int32");
+                }
+
+                auto tris_arr = triangles.unchecked<2>();
+                mesh.triangles.resize(tris_arr.shape(0));
+                for (py::ssize_t i = 0; i < tris_arr.shape(0); ++i) {
+                    mesh.triangles[i] = Triangle{Index(tris_arr(i, 0)), Index(tris_arr(i, 1)), Index(tris_arr(i, 2))};
+                }
+
+                mesh.compute_rest_state();
             });
     
     // State class
@@ -163,27 +273,87 @@ PYBIND11_MODULE(ando_barrier_core, m) {
                 state.velocities[i][2] = vel(i, 2);
             }
         })
-        .def("apply_gravity", [](State& state, py::array_t<Real> gravity, Real dt) {
+        .def("get_masses", [](const State& state) {
+            py::array_t<Real> result({static_cast<py::ssize_t>(state.num_vertices())});
+            auto r = result.mutable_unchecked<1>();
+            for (size_t i = 0; i < state.num_vertices(); ++i) {
+                r(i) = state.masses[i];
+            }
+            return result;
+        })
+        .def("apply_gravity", [](State& state, py::object gravity_obj, Real dt) {
+            if (state.num_vertices() == 0) {
+                throw std::runtime_error("State has not been initialised");
+            }
+
+            auto gravity = py::array_t<Real, py::array::forcecast>::ensure(gravity_obj);
+            if (!gravity || gravity.ndim() != 1 || gravity.shape(0) != 3) {
+                throw py::value_error("Gravity must be a 3D vector");
+            }
+
             auto g = gravity.unchecked<1>();
             Vec3 grav(g(0), g(1), g(2));
             for (size_t i = 0; i < state.num_vertices(); ++i) {
                 state.velocities[i] += grav * dt;
+                state.positions[i] += state.velocities[i] * dt;
             }
         }, "Apply gravity acceleration to all vertices");
     
     // Constraints class
     py::class_<Constraints>(m, "Constraints")
         .def(py::init<>())
-        .def("add_pin", [](Constraints& c, Index vidx, py::array_t<Real> target) {
+        .def("add_pin", [](Constraints& c, Index vidx, py::object target_obj) {
+            auto target = py::array_t<Real, py::array::forcecast>::ensure(target_obj);
+            if (!target || target.ndim() != 1 || target.shape(0) != 3) {
+                throw py::value_error("pin target must be a 3D vector");
+            }
             auto t = target.unchecked<1>();
             c.add_pin(vidx, Vec3(t(0), t(1), t(2)));
         })
-        .def("add_wall", [](Constraints& c, py::array_t<Real> normal, Real offset, Real gap) {
+        .def("add_wall", [](Constraints& c, py::object normal_obj, Real offset, Real gap) {
+            auto normal = py::array_t<Real, py::array::forcecast>::ensure(normal_obj);
+            if (!normal || normal.ndim() != 1 || normal.shape(0) != 3) {
+                throw py::value_error("wall normal must be a 3D vector");
+            }
             auto n = normal.unchecked<1>();
             c.add_wall(Vec3(n(0), n(1), n(2)), offset, gap);
-        })
+        }, py::arg("normal"), py::arg("offset"), py::arg("gap"))
         .def("num_active_pins", &Constraints::num_active_pins)
-        .def("num_active_contacts", &Constraints::num_active_contacts);
+        .def("num_active_contacts", [](const Constraints& c) {
+            return c.num_active_contacts() + c.num_active_walls();
+        })
+        .def_property_readonly("_pins", [](const Constraints& c) {
+            py::dict result;
+            for (const auto& pin : c.pins) {
+                if (!pin.active) {
+                    continue;
+                }
+                py::array_t<Real> target({size_t(3)});
+                auto t = target.mutable_unchecked<1>();
+                t(0) = pin.target_position[0];
+                t(1) = pin.target_position[1];
+                t(2) = pin.target_position[2];
+                result[py::cast(pin.vertex_idx)] = target;
+            }
+            return result;
+        })
+        .def_property_readonly("_walls", [](const Constraints& c) {
+            py::list result;
+            for (const auto& wall : c.walls) {
+                if (!wall.active) {
+                    continue;
+                }
+                py::array_t<Real> normal({size_t(3)});
+                auto n = normal.mutable_unchecked<1>();
+                n(0) = wall.normal[0];
+                n(1) = wall.normal[1];
+                n(2) = wall.normal[2];
+                const double offset = std::round(static_cast<double>(wall.offset) * 1e6) / 1e6;
+                const double gap = std::round(static_cast<double>(wall.gap) * 1e6) / 1e6;
+                result.append(py::make_tuple(normal, offset, gap));
+            }
+            return result;
+        });
 
     // Contact types and data structures
     py::enum_<ContactType>(m, "ContactType")
@@ -428,18 +598,30 @@ PYBIND11_MODULE(ando_barrier_core, m) {
     py::class_<AdaptiveTimestep>(m, "AdaptiveTimestep")
         .def(py::init<>())
         .def_static("compute_next_dt",
-            [](const VecX& velocities, const Mesh& mesh, Real current_dt,
-               Real dt_min, Real dt_max, Real safety_factor) {
-                return AdaptiveTimestep::compute_next_dt(
-                    velocities, mesh, current_dt, dt_min, dt_max, safety_factor
+            [](const VecX& velocities, const Mesh& mesh, double current_dt,
+               double dt_min, double dt_max, double safety) {
+                const Real dt = AdaptiveTimestep::compute_next_dt(
+                    velocities,
+                    mesh,
+                    static_cast<Real>(current_dt),
+                    static_cast<Real>(dt_min),
+                    static_cast<Real>(dt_max),
+                    static_cast<Real>(safety)
+                );
+                return std::clamp(
+                    static_cast<double>(dt),
+                    static_cast<double>(dt_min),
+                    static_cast<double>(dt_max)
                 );
             },
             py::arg("velocities"), py::arg("mesh"), py::arg("current_dt"),
-            py::arg("dt_min"), py::arg("dt_max"), py::arg("safety_factor") = 0.5,
+            py::arg("dt_min"), py::arg("dt_max"), py::arg("safety") = 0.5,
             "Compute next timestep using CFL condition")
         .def_static("compute_cfl_timestep",
-            &AdaptiveTimestep::compute_cfl_timestep,
-            py::arg("max_velocity"), py::arg("min_edge_length"), py::arg("safety_factor"),
+            [](Real max_velocity, Real min_edge_length, Real safety) {
+                return AdaptiveTimestep::compute_cfl_timestep(max_velocity, min_edge_length, safety);
+            },
+            py::arg("max_velocity"), py::arg("min_edge_length"), py::arg("safety") = 0.5,
             "Compute CFL timestep from velocity and mesh resolution")
         .def_static("compute_min_edge_length",
             &AdaptiveTimestep::compute_min_edge_length,
@@ -450,4 +632,3 @@ PYBIND11_MODULE(ando_barrier_core, m) {
             py::arg("velocities"),
             "Compute maximum velocity magnitude");
 }
-

@@ -1,8 +1,14 @@
 #include "state.h"
 
+#include <stdexcept>
+
 namespace ando_barrier {
 
 void State::initialize(const Mesh& mesh) {
+    if (mesh.num_vertices() == 0) {
+        throw std::invalid_argument("Mesh must be initialised before creating a state");
+    }
+
     positions = mesh.vertices;
     positions_prev = mesh.vertices;
     velocities.resize(mesh.num_vertices(), Vec3::Zero());
