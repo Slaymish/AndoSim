@@ -8,6 +8,36 @@ from mathutils import Matrix, Vector
 from ._core_loader import get_core_module, load_core_from_path
 
 
+def _core_supports_full_simulation(module) -> bool:
+    """Return ``True`` when the imported core exposes the native feature set."""
+
+    required = [
+        "Integrator",
+        "EnergyTracker",
+        "CollisionValidator",
+        "AdaptiveTimestep",
+        "RigidBody",
+    ]
+    return all(hasattr(module, name) for name in required)
+
+
+def _ensure_native_core(reporter, module, context: str) -> bool:
+    """Report an actionable error when only the Python fallback is available."""
+
+    if _core_supports_full_simulation(module):
+        return True
+
+    message = (
+        "The compiled ando_barrier_core extension is required for this operation. "
+        "Build it with Blender's bundled Python (see docs/GETTING_STARTED.md) and reinstall the add-on."
+    )
+    try:
+        reporter({'ERROR'}, message)
+    except Exception:
+        pass
+    return False
+
+
 class ANDO_OT_select_core_module(Operator):
     """Allow users to load a compiled ando_barrier_core module manually."""
 
@@ -96,6 +126,10 @@ def _collect_rigid_bodies(context, exclude_obj=None, reporter=None):
     if abc is None:
         if reporter:
             reporter({'WARNING'}, "ando_barrier_core module not available; rigid bodies disabled")
+        return []
+    if not _core_supports_full_simulation(abc):
+        if reporter:
+            reporter({'WARNING'}, "Compiled ando_barrier_core module missing; rigid colliders disabled")
         return []
 
     depsgraph = context.evaluated_depsgraph_get()
@@ -243,6 +277,8 @@ class ANDO_OT_bake_simulation(Operator):
         if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available. Build the C++ extension first.")
             return {'CANCELLED'}
+        if not _ensure_native_core(self.report, abc, "Bake simulation"):
+            return {'CANCELLED'}
         
         obj = context.active_object
         if not obj or obj.type != 'MESH':
@@ -257,6 +293,8 @@ class ANDO_OT_bake_simulation(Operator):
         
         # Get mesh data
         mesh_data = obj.data
+        matrix_world = obj.matrix_world.copy()
+        matrix_world_inv = matrix_world.inverted_safe()
         # Ensure we have triangulated connectivity without modifying the source mesh.
         mesh_data.calc_loop_triangles()
         loop_tris = getattr(mesh_data, "loop_triangles", ())
@@ -266,7 +304,10 @@ class ANDO_OT_bake_simulation(Operator):
             return {'CANCELLED'}
 
         triangles = np.array([tri.vertices for tri in loop_tris], dtype=np.int32)
-        vertices = np.array([v.co for v in mesh_data.vertices], dtype=np.float32)
+        vertices = np.array(
+            [tuple(matrix_world @ v.co) for v in mesh_data.vertices],
+            dtype=np.float32,
+        )
 
         polygon_sides = Counter(len(poly.vertices) for poly in mesh_data.polygons)
         non_tri_faces = sum(count for sides, count in polygon_sides.items() if sides != 3)
@@ -322,17 +363,15 @@ class ANDO_OT_bake_simulation(Operator):
         pin_positions_world = []  # Store for later reference
         if pin_group_name in obj.vertex_groups:
             pin_group = obj.vertex_groups[pin_group_name]
-            matrix_world = obj.matrix_world
             for i, v in enumerate(mesh_data.vertices):
                 try:
                     weight = pin_group.weight(i)
                     if weight > 0.5:  # Threshold for pinning
-                        # Use object-space coordinates for physics
-                        pin_pos_local = np.array(v.co, dtype=np.float32)
-                        constraints.add_pin(i, pin_pos_local)
-                        # Keep world-space copies for optional debug/visualization
+                        # Use world-space coordinates for physics
                         pin_pos_world = matrix_world @ v.co
-                        pin_positions_world.append(pin_pos_world.copy())
+                        constraints.add_pin(i, np.array(pin_pos_world, dtype=np.float32))
+                        # Keep world-space copies for optional debug/visualization
+                        pin_positions_world.append(tuple(pin_pos_world))
                         num_pins_added += 1
                 except RuntimeError:
                     pass  # Vertex not in group
@@ -410,9 +449,11 @@ class ANDO_OT_bake_simulation(Operator):
                         abc.Integrator.step(mesh, state, constraints, params)
                 
                 # Update shape key with new positions
-                positions = state.get_positions()
-                for i in range(len(positions)):
-                    shape_key.data[i].co = positions[i]
+                positions_world = state.get_positions()
+                for i in range(len(positions_world)):
+                    world_vec = Vector(positions_world[i].tolist())
+                    local_vec = matrix_world_inv @ world_vec
+                    shape_key.data[i].co = local_vec
                 
                 # Set keyframe for shape key animation
                 shape_key.value = 0.0
@@ -456,6 +497,11 @@ class ANDO_OT_reset_simulation(Operator):
                 obj.shape_key_remove(key)
             
             self.report({'INFO'}, f"Removed {len(keys_to_remove)} shape keys from {obj.name}")
+            
+            # Remove keyframe animation data if present
+            if obj.data.shape_keys.animation_data:
+                obj.data.shape_keys.animation_data_clear()
+                self.report({'INFO'}, "Cleared shape key animation data")
         else:
             self.report({'INFO'}, "No shape keys to remove")
         
@@ -537,6 +583,8 @@ class ANDO_OT_init_realtime_simulation(Operator):
         if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available")
             return {'CANCELLED'}
+        if not _ensure_native_core(self.report, abc, "Real-time simulation"):
+            return {'CANCELLED'}
         
         obj = context.active_object
         if not obj or obj.type != 'MESH':
@@ -549,7 +597,12 @@ class ANDO_OT_init_realtime_simulation(Operator):
 
         # Get mesh data
         mesh_data = obj.data
-        vertices = np.array([v.co for v in mesh_data.vertices], dtype=np.float32)
+        matrix_world = obj.matrix_world.copy()
+        matrix_world_inv = matrix_world.inverted_safe()
+        vertices = np.array(
+            [tuple(matrix_world @ v.co) for v in mesh_data.vertices],
+            dtype=np.float32,
+        )
         triangles = np.array([p.vertices for p in mesh_data.polygons if len(p.vertices) == 3], dtype=np.int32)
         
         if len(triangles) == 0:
@@ -599,14 +652,12 @@ class ANDO_OT_init_realtime_simulation(Operator):
         pin_positions_world = []
         if pin_group_name in obj.vertex_groups:
             pin_group = obj.vertex_groups[pin_group_name]
-            matrix_world = obj.matrix_world
             for i, v in enumerate(mesh_data.vertices):
                 try:
                     weight = pin_group.weight(i)
                     if weight > 0.5:
-                        pin_pos_local = np.array(v.co, dtype=np.float32)
-                        constraints.add_pin(i, pin_pos_local)
                         pin_pos_world = matrix_world @ v.co
+                        constraints.add_pin(i, np.array(pin_pos_world, dtype=np.float32))
                         pin_positions_world.append(tuple(pin_pos_world))
                         num_pins_added += 1
                 except RuntimeError:
@@ -641,6 +692,8 @@ class ANDO_OT_init_realtime_simulation(Operator):
         _sim_state['rigids'] = rigid_bodies
         _sim_state['rigid_objects'] = [entry['object'] for entry in rigid_entries]
         _sim_state['stats']['num_rigid_bodies'] = len(rigid_entries)
+        _sim_state['matrix_world'] = matrix_world
+        _sim_state['matrix_world_inv'] = matrix_world_inv
 
         self.report({'INFO'}, f"Initialized: {len(vertices)} vertices, {num_pins_added} pins")
         return {'FINISHED'}
@@ -661,6 +714,8 @@ class ANDO_OT_step_simulation(Operator):
         abc = get_core_module(context="Simulation step operator")
         if abc is None:
             self.report({'ERROR'}, "ando_barrier_core module not available")
+            return {'CANCELLED'}
+        if not _ensure_native_core(self.report, abc, "Simulation step"):
             return {'CANCELLED'}
         import time
         
@@ -750,9 +805,15 @@ class ANDO_OT_step_simulation(Operator):
             stats['frame_history'].pop(0)
         
         # Update mesh vertices directly (no shape keys)
-        positions = state.get_positions()
+        matrix_world_inv = _sim_state.get('matrix_world_inv')
+        if matrix_world_inv is None:
+            matrix_world_inv = obj.matrix_world.inverted_safe()
+            _sim_state['matrix_world_inv'] = matrix_world_inv
+
+        positions_world = state.get_positions()
         for i, v in enumerate(obj.data.vertices):
-            v.co = positions[i]
+            world_vec = Vector(positions_world[i].tolist())
+            v.co = matrix_world_inv @ world_vec
 
         # Mark mesh as updated
         obj.data.update()
