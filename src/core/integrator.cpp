@@ -217,8 +217,8 @@ void Integrator::compute_gradient(
     gradient += elastic_gradient;
     
     // Assemble base elastic Hessian (mass + elasticity) for stiffness extraction
-    SparseMatrix H_elastic;
-    H_elastic.resize(3 * n, 3 * n);
+    SparseMatrix H_total;
+    H_total.resize(3 * n, 3 * n);
     std::vector<Triplet> base_triplets;
     base_triplets.reserve(9 * n + 9 * mesh.triangles.size() * 9);
     
@@ -235,7 +235,11 @@ void Integrator::compute_gradient(
     std::vector<Triplet> elastic_triplets;
     Elasticity::compute_hessian(mesh, state, elastic_triplets);
     base_triplets.insert(base_triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
-    H_elastic.setFromTriplets(base_triplets.begin(), base_triplets.end());
+    H_total.setFromTriplets(base_triplets.begin(), base_triplets.end());
+
+    SparseMatrix H_elastic;
+    H_elastic.resize(3 * n, 3 * n);
+    H_elastic.setFromTriplets(elastic_triplets.begin(), elastic_triplets.end());
     
     // 3. Barrier forces: Σ ∇V_barrier
     // For each contact
@@ -243,10 +247,9 @@ void Integrator::compute_gradient(
         if (contact.type == ContactType::POINT_TRIANGLE ||
             contact.type == ContactType::RIGID_POINT_TRIANGLE) {
             // Extract H_block for vertex involved in contact
-            Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
+            Mat3 H_block = Stiffness::extract_hessian_block(H_total, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
-                contact.normal, H_block, params.min_gap
+                contact, state, dt, H_elastic
             );
 
             if (contact.type == ContactType::POINT_TRIANGLE) {
@@ -268,7 +271,7 @@ void Integrator::compute_gradient(
         if (!pin.active) continue;
 
         Vec3 offset = state.positions[pin.vertex_idx] - pin.target_position;
-        Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, pin.vertex_idx);
+        Mat3 H_block = Stiffness::extract_hessian_block(H_total, pin.vertex_idx);
         Real k_bar = Stiffness::compute_pin_stiffness(state.masses[pin.vertex_idx], dt,
                                                      offset, H_block, params.min_gap);
 
@@ -282,7 +285,7 @@ void Integrator::compute_gradient(
 
         // For each vertex, compute wall stiffness and gradient contribution
         for (Index vi = 0; vi < static_cast<Index>(state.num_vertices()); ++vi) {
-            Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, vi);
+            Mat3 H_block = Stiffness::extract_hessian_block(H_total, vi);
             Real k_bar = Stiffness::compute_wall_stiffness(state.masses[vi], params.wall_gap,
                                                            wall.normal, H_block, params.min_gap);
 
@@ -305,10 +308,9 @@ void Integrator::compute_gradient(
             }
             
             // Estimate normal force from contact stiffness and gap
-            Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
+            Mat3 H_block = Stiffness::extract_hessian_block(H_total, contact.idx0);
             Real k_contact = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
-                contact.normal, H_block, params.min_gap
+                contact, state, dt, H_elastic
             );
             Real normal_force_estimate = k_contact * std::abs(contact.gap);
             
@@ -377,10 +379,14 @@ void Integrator::assemble_system_matrix(
     // Add elastic Hessian triplets
     triplets.insert(triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
     
-    // Build a temporary base Hessian (mass + elasticity) for stiffness extraction
+    // Build base Hessians for stiffness extraction
     SparseMatrix H_base;
     H_base.resize(3 * n, 3 * n);
     H_base.setFromTriplets(triplets.begin(), triplets.end());
+
+    SparseMatrix H_elastic;
+    H_elastic.resize(3 * n, 3 * n);
+    H_elastic.setFromTriplets(elastic_triplets.begin(), elastic_triplets.end());
     
     // 3. Barrier Hessians: Σ H_barrier
     // For each contact
@@ -390,8 +396,7 @@ void Integrator::assemble_system_matrix(
             // Extract H_block for accurate stiffness
             Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
             Real k_bar = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
-                contact.normal, H_block, params.min_gap
+                contact, state, dt, H_elastic
             );
 
             if (contact.type == ContactType::POINT_TRIANGLE) {
@@ -454,8 +459,7 @@ void Integrator::assemble_system_matrix(
             // F_n ≈ k_contact * gap (simplified for friction stiffness)
             Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
             Real k_contact = Stiffness::compute_contact_stiffness(
-                state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
-                contact.normal, H_block, params.min_gap
+                contact, state, dt, H_elastic
             );
             Real normal_force_estimate = k_contact * std::abs(contact.gap);
             
@@ -637,9 +641,9 @@ void Integrator::apply_rigid_coupling(const Mesh& mesh,
     const int n = static_cast<int>(state.num_vertices());
     const Real dt = params.dt;
 
-    // Assemble base Hessian for stiffness extraction (mass + elasticity)
-    SparseMatrix H_elastic;
-    H_elastic.resize(3 * n, 3 * n);
+    // Assemble base Hessians for stiffness extraction (mass + elasticity)
+    SparseMatrix H_total;
+    H_total.resize(3 * n, 3 * n);
     std::vector<Triplet> base_triplets;
     base_triplets.reserve(9 * n + 9 * mesh.triangles.size() * 9);
 
@@ -654,7 +658,11 @@ void Integrator::apply_rigid_coupling(const Mesh& mesh,
     std::vector<Triplet> elastic_triplets;
     Elasticity::compute_hessian(mesh, state, elastic_triplets);
     base_triplets.insert(base_triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
-    H_elastic.setFromTriplets(base_triplets.begin(), base_triplets.end());
+    H_total.setFromTriplets(base_triplets.begin(), base_triplets.end());
+
+    SparseMatrix H_elastic;
+    H_elastic.resize(3 * n, 3 * n);
+    H_elastic.setFromTriplets(elastic_triplets.begin(), elastic_triplets.end());
 
     for (auto& body : rigid_bodies) {
         body.clear_accumulators();
@@ -669,10 +677,9 @@ void Integrator::apply_rigid_coupling(const Mesh& mesh,
             continue;
         }
 
-        Mat3 H_block = Stiffness::extract_hessian_block(H_elastic, contact.idx0);
+        Mat3 H_block = Stiffness::extract_hessian_block(H_total, contact.idx0);
         Real k_bar = Stiffness::compute_contact_stiffness(
-            state.masses[contact.idx0], dt, contact.gap, params.contact_gap_max,
-            contact.normal, H_block, params.min_gap
+            contact, state, dt, H_elastic
         );
 
         Vec3 normal = contact.normal;

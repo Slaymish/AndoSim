@@ -14,18 +14,55 @@
 
 using namespace ando_barrier;
 
-void test_stiffness_contact() {
-    std::cout << "Testing contact stiffness..." << std::endl;
-    Real mass = 0.1, dt = 0.01, gap = 0.001;
-    Real g_max = gap;      // Ensure takeover term inactive
-    Real min_gap = 1e-6;   // Numerical minimum gap
-    Vec3 normal(0.0, 0.0, 1.0);
-    Mat3 H = Mat3::Identity() * 1000.0;
-    Real k = Stiffness::compute_contact_stiffness(
-        mass, dt, gap, g_max, normal, H, min_gap);
-    Real expected = mass / (dt * dt) + 1000.0;
-    assert(std::abs(k - expected) < 1.0);
-    std::cout << "  ✓ Contact stiffness passed" << std::endl;
+void test_stiffness_contact_point_triangle() {
+    std::cout << "Testing point-triangle contact stiffness..." << std::endl;
+
+    State state;
+    state.positions = {
+        Vec3(0.0, 0.0, 0.2),
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(1.0, 0.0, 0.0),
+        Vec3(0.0, 1.0, 0.0)
+    };
+    state.masses = {0.1, 0.2, 0.3, 0.4};
+
+    ContactPair contact;
+    contact.type = ContactType::POINT_TRIANGLE;
+    contact.idx0 = 0;
+    contact.idx1 = 1;
+    contact.idx2 = 2;
+    contact.idx3 = 3;
+    contact.normal = Vec3(0.0, 0.0, 1.0);
+    contact.witness_q = Vec3(1.0 / 3.0, 1.0 / 3.0, 0.0);
+    contact.gap = 0.001;
+
+    const Real dt = 0.01;
+
+    std::vector<Triplet> triplets;
+    auto add_diag = [&](Index vertex, Real value) {
+        for (int j = 0; j < 3; ++j) {
+            triplets.emplace_back(vertex * 3 + j, vertex * 3 + j, value);
+        }
+    };
+
+    add_diag(0, 900.0);
+    add_diag(1, 100.0);
+    add_diag(2, 200.0);
+    add_diag(3, 300.0);
+
+    SparseMatrix H(12, 12);
+    H.setFromTriplets(triplets.begin(), triplets.end());
+
+    Real k = Stiffness::compute_contact_stiffness(contact, state, dt, H);
+
+    Real mass_avg = (state.masses[0] + state.masses[1] + state.masses[2] + state.masses[3]) / Real(4.0);
+    Real bary = Real(1.0 / 3.0);
+    Real H_diag = Real(900.0) + bary * bary * Real(100.0 + 200.0 + 300.0);
+    Real Wn_norm = std::sqrt(Real(1.0) + Real(3.0) * bary * bary);
+    Real expected = mass_avg / (dt * dt) + Wn_norm * H_diag;
+
+    assert(std::abs(k - expected) < 1e-3 * expected);
+    std::cout << "  ✓ Point-triangle contact stiffness passed" << std::endl;
 }
 
 void test_stiffness_pin() {
@@ -41,20 +78,52 @@ void test_stiffness_pin() {
     std::cout << "  ✓ Pin stiffness passed" << std::endl;
 }
 
-void test_stiffness_takeover() {
-    std::cout << "Testing stiffness takeover..." << std::endl;
-    Real mass = 0.1, dt = 0.01;
-    Real gap_large = 0.01, gap_tiny = 1e-5;
-    Real g_max = 0.01;
-    Real min_gap = 1e-6;
-    Vec3 normal(0.0, 0.0, 1.0);
-    Mat3 H = Mat3::Identity() * 1000.0;
-    Real k_large = Stiffness::compute_contact_stiffness(
-        mass, dt, gap_large, g_max, normal, H, min_gap);
-    Real k_tiny = Stiffness::compute_contact_stiffness(
-        mass, dt, gap_tiny, g_max, normal, H, min_gap);
-    assert(k_tiny > k_large * 10.0);
-    std::cout << "  ✓ Stiffness takeover passed" << std::endl;
+void test_stiffness_contact_edge_edge() {
+    std::cout << "Testing edge-edge contact stiffness..." << std::endl;
+
+    State state;
+    state.positions = {
+        Vec3(0.0, 0.0, 0.0),
+        Vec3(1.0, 0.0, 0.0),
+        Vec3(0.0, 0.1, 0.0),
+        Vec3(1.0, 0.1, 0.0)
+    };
+    state.masses = {0.2, 0.2, 0.2, 0.2};
+
+    ContactPair contact;
+    contact.type = ContactType::EDGE_EDGE;
+    contact.idx0 = 0;
+    contact.idx1 = 1;
+    contact.idx2 = 2;
+    contact.idx3 = 3;
+    contact.normal = Vec3(0.0, 1.0, 0.0);
+    contact.gap = 0.001;
+
+    const Real dt = 0.01;
+
+    std::vector<Triplet> triplets;
+    auto add_diag = [&](Index vertex, Real value) {
+        for (int j = 0; j < 3; ++j) {
+            triplets.emplace_back(vertex * 3 + j, vertex * 3 + j, value);
+        }
+    };
+
+    add_diag(0, 400.0);
+    add_diag(1, 500.0);
+    add_diag(2, 600.0);
+    add_diag(3, 700.0);
+
+    SparseMatrix H(12, 12);
+    H.setFromTriplets(triplets.begin(), triplets.end());
+
+    Real k = Stiffness::compute_contact_stiffness(contact, state, dt, H);
+
+    Real mass_avg = Real(0.2);  // All masses identical
+    Real H_diag = Real(0.25) * Real(400.0 + 500.0 + 600.0 + 700.0);
+    Real expected = mass_avg / (dt * dt) + H_diag;
+
+    assert(std::abs(k - expected) < 1e-5 * expected);
+    std::cout << "  ✓ Edge-edge contact stiffness passed" << std::endl;
 }
 
 void test_collision_bvh();
@@ -67,9 +136,9 @@ void test_pcg_solver();
 
 int main() {
     std::cout << "\n========= Stiffness Tests =========\n" << std::endl;
-    test_stiffness_contact();
+    test_stiffness_contact_point_triangle();
     test_stiffness_pin();
-    test_stiffness_takeover();
+    test_stiffness_contact_edge_edge();
     
     std::cout << "\n========= Collision Tests =========\n" << std::endl;
     test_collision_bvh();
