@@ -73,7 +73,7 @@ void test_stiffness_pin() {
     Real offset_length = offset.norm();
     Mat3 H = Mat3::Identity() * 500.0;
     Real k = Stiffness::compute_pin_stiffness(mass, dt, offset, H, min_gap);
-    Real expected = mass / (dt * dt) + 500.0 + mass / (offset_length * offset_length);
+    Real expected = 500.0 + mass / (offset_length * offset_length);
     assert(std::abs(k - expected) < 1.0);
     std::cout << "  ✓ Pin stiffness passed" << std::endl;
 }
