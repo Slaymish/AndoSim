@@ -22,20 +22,13 @@ from typing import Iterable, List, Optional
 _LOGGER = logging.getLogger(__name__)
 
 _MODULE_NAME = "ando_barrier_core"
-_PACKAGE_NAME = f"{__package__}.{_MODULE_NAME}"
+_PACKAGE_PREFIX = __package__ or "ando_barrier"
+_PACKAGE_NAME = f"{_PACKAGE_PREFIX}.{_MODULE_NAME}"
 _ADDON_ROOT = Path(__file__).resolve().parent
 
 _CACHED_MODULE: ModuleType | None = None
 _LOGGED_FAILURE = False
 _FALLBACK_PROMPTED = False
-
-
-def _ensure_addon_on_path() -> None:
-    """Make sure the add-on's directory is present on sys.path."""
-
-    addon_as_str = str(_ADDON_ROOT)
-    if addon_as_str not in sys.path:
-        sys.path.insert(0, addon_as_str)
 
 
 def _iter_candidate_paths() -> Iterable[Path]:
@@ -57,18 +50,17 @@ def _iter_candidate_paths() -> Iterable[Path]:
         yield fallback_py
 
 
-def _alias_module(module: ModuleType) -> None:
-    """Expose the module under both absolute and package-qualified names."""
+def _register_package_module(module: ModuleType) -> None:
+    """Ensure the resolved module is available under the package namespace."""
 
-    sys.modules.setdefault(_MODULE_NAME, module)
     sys.modules.setdefault(_PACKAGE_NAME, module)
 
 
-def _load_module_from_path(path: Path) -> tuple[ModuleType | None, str | None]:
+def _load_module_from_path(path: Path, *, module_name: str = _PACKAGE_NAME) -> tuple[ModuleType | None, str | None]:
     """Load a module directly from the provided file system path."""
 
     try:
-        spec = importlib.util.spec_from_file_location(_MODULE_NAME, path)
+        spec = importlib.util.spec_from_file_location(module_name, path)
     except Exception as exc:  # pragma: no cover - defensive
         return None, str(exc)
 
@@ -102,24 +94,10 @@ def _import_core() -> ModuleType:
     if _CACHED_MODULE is not None:
         return _CACHED_MODULE
 
-    _ensure_addon_on_path()
-
-    preloaded = sys.modules.get(_MODULE_NAME) or sys.modules.get(_PACKAGE_NAME)
+    preloaded = sys.modules.get(_PACKAGE_NAME)
     if preloaded is not None:
-        _alias_module(preloaded)
         _CACHED_MODULE = preloaded
         return preloaded
-
-    # Prefer an already-installed binary module on sys.path.
-    binary_module: ModuleType | None = None
-    try:
-        candidate = importlib.import_module(_MODULE_NAME)
-    except ModuleNotFoundError:
-        candidate = None
-    else:
-        module_file = getattr(candidate, "__file__", "")
-        if module_file and Path(module_file).suffix not in {".py", ".pyc"}:
-            binary_module = candidate
 
     errors: List[str] = []
     candidates = list(_iter_candidate_paths())
@@ -136,21 +114,28 @@ def _import_core() -> ModuleType:
             errors.append(f"{candidate}: {error}")
             continue
 
-        _alias_module(module)
+        _register_package_module(module)
         _CACHED_MODULE = module
         return module
 
-    if binary_module is not None:
-        _alias_module(binary_module)
-        _CACHED_MODULE = binary_module
-        return binary_module
+    # Try to re-use an installed wheel/egg without polluting sys.path.
+    spec = importlib.util.find_spec(_MODULE_NAME)
+    if spec and spec.origin:
+        module_path = Path(spec.origin)
+        module, error = _load_module_from_path(module_path)
+        if module is None:
+            errors.append(f"{module_path}: {error}")
+        else:
+            _register_package_module(module)
+            _CACHED_MODULE = module
+            return module
 
     if fallback_candidate is not None:
         module, error = _load_module_from_path(fallback_candidate)
         if module is None:
             errors.append(f"{fallback_candidate}: {error}")
         else:
-            _alias_module(module)
+            _register_package_module(module)
             _CACHED_MODULE = module
             _handle_python_fallback()
             return module
@@ -161,7 +146,7 @@ def _import_core() -> ModuleType:
     except ModuleNotFoundError:
         module = None
     else:
-        _alias_module(module)
+        _register_package_module(module)
         _CACHED_MODULE = module
         _handle_python_fallback()
         return module
@@ -255,7 +240,7 @@ def load_core_from_path(path: Path) -> tuple[ModuleType | None, str | None]:
     if module is None:
         return None, error
 
-    _alias_module(module)
+    _register_package_module(module)
 
     global _CACHED_MODULE  # pylint: disable=global-statement
     _CACHED_MODULE = module
