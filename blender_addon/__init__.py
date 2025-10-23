@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Ando Barrier Physics",
     "author": "BlenderSim Project",
-    "version": (1, 0, 3),
+    "version": (1, 1, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > Ando Physics",
     "description": "Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness (Ando 2024)",
