@@ -50,3 +50,4 @@ output/
 extern/ppf-contact-solver/build/
 extern/ppf-contact-solver/.venv/
 
+dist/
