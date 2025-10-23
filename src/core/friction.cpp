@@ -6,12 +6,14 @@ namespace ando_barrier {
 Real FrictionModel::compute_friction_stiffness(
     Real normal_force,
     Real friction_mu,
-    Real friction_epsilon
+    Real friction_epsilon,
+    Real tangential_displacement
 ) {
-    // k_f = μ * |F_n| / ε²
-    // Regularization prevents division by zero and limits stiffness growth
-    Real epsilon_sq = friction_epsilon * friction_epsilon;
-    Real stiffness = friction_mu * std::abs(normal_force) / epsilon_sq;
+    Real denom = std::max(friction_epsilon, std::abs(tangential_displacement));
+    if (denom <= static_cast<Real>(0.0)) {
+        denom = friction_epsilon;
+    }
+    Real stiffness = friction_mu * std::abs(normal_force) / denom;
     
     // Cap maximum stiffness to prevent numerical issues
     // Max stiffness ~10^8 for typical parameters

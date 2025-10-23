@@ -6,6 +6,44 @@
 
 namespace ando_barrier {
 
+namespace {
+
+static Vec3 compute_triangle_barycentric(const Vec3& p, const Vec3& a,
+                                         const Vec3& b, const Vec3& c) {
+    Vec3 v0 = b - a;
+    Vec3 v1 = c - a;
+    Vec3 v2 = p - a;
+
+    Real d00 = v0.dot(v0);
+    Real d01 = v0.dot(v1);
+    Real d11 = v1.dot(v1);
+    Real d20 = v2.dot(v0);
+    Real d21 = v2.dot(v1);
+
+    Real denom = d00 * d11 - d01 * d01;
+    Real v = Real(0.0);
+    Real w = Real(0.0);
+    if (std::abs(denom) > std::numeric_limits<Real>::epsilon()) {
+        v = (d11 * d20 - d01 * d21) / denom;
+        w = (d00 * d21 - d01 * d20) / denom;
+    }
+
+    v = std::clamp(v, Real(0.0), Real(1.0));
+    w = std::clamp(w, Real(0.0), Real(1.0));
+    if (v + w > Real(1.0)) {
+        Real sum = v + w;
+        if (sum > std::numeric_limits<Real>::epsilon()) {
+            v /= sum;
+            w /= sum;
+        }
+    }
+
+    Real u = Real(1.0) - v - w;
+    return Vec3(u, v, w);
+}
+
+} // namespace
+
 // Build AABB for triangle
 static AABB compute_triangle_aabb(const Vec3& a, const Vec3& b, const Vec3& c) {
     AABB box;
@@ -429,6 +467,8 @@ void Collision::detect_wall_collisions(const State& state,
             pair.normal = plane_normal;
             pair.witness_p = state.positions[i];
             pair.witness_q = state.positions[i] - signed_dist * plane_normal;
+            pair.vertex_count = 1;
+            pair.weights[0] = static_cast<Real>(1.0);
             contacts.push_back(pair);
         }
     }
@@ -458,10 +498,17 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
             const Vec3& a = state.positions[pair.idx1];
             const Vec3& b = state.positions[pair.idx2];
             const Vec3& c = state.positions[pair.idx3];
-            
+
             if (narrow_phase_point_triangle(p, a, b, c, pair.gap, pair.normal,
                                            pair.witness_p, pair.witness_q)) {
                 if (pair.gap < 0.01) {  // Within collision threshold
+                    Vec3 bary = compute_triangle_barycentric(pair.witness_q, a, b, c);
+                    pair.barycentric = bary;
+                    pair.weights[0] = static_cast<Real>(1.0);
+                    pair.weights[1] = -bary[0];
+                    pair.weights[2] = -bary[1];
+                    pair.weights[3] = -bary[2];
+                    pair.vertex_count = 4;
                     contacts.push_back(pair);
                 }
             }
@@ -470,10 +517,15 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
             const Vec3& p1 = state.positions[pair.idx1];
             const Vec3& q0 = state.positions[pair.idx2];
             const Vec3& q1 = state.positions[pair.idx3];
-            
+
             if (narrow_phase_edge_edge(p0, p1, q0, q1, pair.gap, pair.normal,
                                       pair.witness_p, pair.witness_q)) {
                 if (pair.gap < 0.01) {  // Within collision threshold
+                    pair.vertex_count = 4;
+                    pair.weights[0] = static_cast<Real>(0.5);
+                    pair.weights[1] = static_cast<Real>(0.5);
+                    pair.weights[2] = static_cast<Real>(-0.5);
+                    pair.weights[3] = static_cast<Real>(-0.5);
                     contacts.push_back(pair);
                 }
             }
@@ -517,6 +569,8 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
                 if (narrow_phase_point_triangle(p, a, b, c, pair.gap, pair.normal,
                                                 pair.witness_p, pair.witness_q)) {
                     if (pair.gap < 0.01) {
+                        pair.vertex_count = 1;
+                        pair.weights[0] = static_cast<Real>(1.0);
                         contacts.push_back(pair);
                     }
                 }

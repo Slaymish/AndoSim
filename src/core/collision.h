@@ -3,8 +3,9 @@
 #include "types.h"
 #include "mesh.h"
 #include "state.h"
-#include <vector>
+#include <array>
 #include <memory>
+#include <vector>
 
 namespace ando_barrier {
 
@@ -76,23 +77,29 @@ enum class ContactType {
 // Contact pair from collision detection
 struct ContactPair {
     ContactType type;
-    
+
     // Indices (interpretation depends on type)
     // POINT_TRIANGLE: idx0 = vertex, idx1/2/3 = triangle vertices
     // EDGE_EDGE: idx0/1 = edge0 vertices, idx2/3 = edge1 vertices
     Index idx0, idx1, idx2, idx3;
-    
+
     // Geometric data (computed in narrow phase)
     Real gap;           // Distance between primitives
     Vec3 normal;        // Contact normal (pointing from idx0 toward target)
     Vec3 witness_p;     // Witness point on primitive 0
     Vec3 witness_q;     // Witness point on primitive 1
-    
+    Vec3 barycentric;   // Barycentric coordinates for witness_q (triangle contacts)
+    std::array<Real, 4> weights; // Extended direction weights W for each vertex
+    int vertex_count;
+
     int rigid_body_index;
 
     ContactPair() : type(ContactType::POINT_TRIANGLE),
                    idx0(-1), idx1(-1), idx2(-1), idx3(-1),
-                   gap(0.0), rigid_body_index(-1) {}
+                   gap(0.0), barycentric(Vec3::Zero()), vertex_count(0),
+                   rigid_body_index(-1) {
+        weights.fill(static_cast<Real>(0));
+    }
 };
 
 // Collision detection system

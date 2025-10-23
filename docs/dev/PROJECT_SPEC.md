@@ -86,7 +86,7 @@ Task 3: Cubic Barrier Energy (Weak) with Semi-Implicit k
 - Acceptance tests:
   - Compare numeric and analytic gradients/Hessians on random configurations (finite differences).
 - Notes:
-  - Equation: V_weak(g, ḡ, k) = −(k/2)(g−ḡ)² ln(g/ḡ) for g ≤ ḡ, else 0.
+  - Equation: V_weak(g, ḡ, k) = (k/(2ḡ))(ḡ − g)^3 for g ≤ ḡ, else 0.
   - Semi-implicit stiffness: no chain rule on k̄. This is a critical consistency requirement.
 
 Task 4: Dynamic Elasticity-Inclusive Stiffness (k) per constraint

@@ -4,43 +4,11 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <array>
 
 namespace ando_barrier {
 
 namespace {
-
-static Vec3 compute_barycentric(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c) {
-    Vec3 v0 = b - a;
-    Vec3 v1 = c - a;
-    Vec3 v2 = p - a;
-
-    Real d00 = v0.dot(v0);
-    Real d01 = v0.dot(v1);
-    Real d11 = v1.dot(v1);
-    Real d20 = v2.dot(v0);
-    Real d21 = v2.dot(v1);
-
-    Real denom = d00 * d11 - d01 * d01;
-    Real v = Real(0.0);
-    Real w = Real(0.0);
-    if (std::abs(denom) > Real(1e-12)) {
-        v = (d11 * d20 - d01 * d21) / denom;
-        w = (d00 * d21 - d01 * d20) / denom;
-    }
-
-    v = std::clamp(v, Real(0.0), Real(1.0));
-    w = std::clamp(w, Real(0.0), Real(1.0));
-    if (v + w > Real(1.0)) {
-        Real sum = v + w;
-        if (sum > Real(1e-12)) {
-            v /= sum;
-            w /= sum;
-        }
-    }
-
-    Real u = Real(1.0) - v - w;
-    return Vec3(u, v, w);
-}
 
 static Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> extract_submatrix(
     const SparseMatrix& H,
@@ -95,121 +63,56 @@ Real Stiffness::compute_contact_stiffness(
     Vec3 n = contact.normal;
     Real n_norm = n.norm();
     if (n_norm < Real(1e-12)) {
-        n = Vec3(0.0, 1.0, 0.0);
-        n_norm = Real(1.0);
+        return Real(0.0);
     }
+    n /= n_norm;
 
-    std::vector<Index> vertices;
-    std::vector<Real> weights;
-    vertices.reserve(4);
-    weights.reserve(4);
+    const std::array<Index, 4> indices = {contact.idx0, contact.idx1, contact.idx2, contact.idx3};
+    const int vertex_count = std::max(contact.vertex_count, 1);
 
-    if (contact.type == ContactType::POINT_TRIANGLE ||
-        contact.type == ContactType::RIGID_POINT_TRIANGLE) {
-        vertices.push_back(contact.idx0);
-        weights.push_back(Real(1.0));
-
-        if (contact.type == ContactType::POINT_TRIANGLE) {
-            bool triangle_valid =
-                contact.idx1 >= 0 && contact.idx2 >= 0 && contact.idx3 >= 0 &&
-                static_cast<size_t>(contact.idx1) < state.positions.size() &&
-                static_cast<size_t>(contact.idx2) < state.positions.size() &&
-                static_cast<size_t>(contact.idx3) < state.positions.size();
-
-            if (triangle_valid) {
-                vertices.push_back(contact.idx1);
-                vertices.push_back(contact.idx2);
-                vertices.push_back(contact.idx3);
-
-                const Vec3& a = state.positions[contact.idx1];
-                const Vec3& b = state.positions[contact.idx2];
-                const Vec3& c = state.positions[contact.idx3];
-                Vec3 bary = compute_barycentric(contact.witness_q, a, b, c);
-
-                Real u = bary[0];
-                Real v = bary[1];
-                Real w = bary[2];
-                weights.push_back(-u);
-                weights.push_back(-v);
-                weights.push_back(-w);
-            }
-        }
-    } else if (contact.type == ContactType::EDGE_EDGE) {
-        vertices.push_back(contact.idx0);
-        vertices.push_back(contact.idx1);
-        vertices.push_back(contact.idx2);
-        vertices.push_back(contact.idx3);
-
-        weights = {Real(0.5), Real(0.5), Real(-0.5), Real(-0.5)};
-    } else {
-        vertices.push_back(contact.idx0);
-        weights.push_back(Real(1.0));
-    }
-
-    // Filter invalid indices (e.g., rigid references)
     std::vector<Index> valid_vertices;
     std::vector<Real> valid_weights;
-    valid_vertices.reserve(vertices.size());
-    valid_weights.reserve(weights.size());
-    for (size_t i = 0; i < vertices.size(); ++i) {
-        Index idx = vertices[i];
+    valid_vertices.reserve(vertex_count);
+    valid_weights.reserve(vertex_count);
+
+    for (int i = 0; i < vertex_count; ++i) {
+        Index idx = indices[i];
         if (idx < 0 || static_cast<size_t>(idx) >= state.masses.size()) {
             continue;
         }
+        Real weight = contact.weights[i];
+        if (weight == Real(0.0)) {
+            continue;
+        }
         valid_vertices.push_back(idx);
-        valid_weights.push_back(weights[i]);
+        valid_weights.push_back(weight);
     }
 
     if (valid_vertices.empty()) {
         return Real(0.0);
     }
 
-    // Average mass across participating vertices
-    Real mass_sum = Real(0.0);
-    for (Index idx : valid_vertices) {
-        mass_sum += state.masses[idx];
+    Real inertial = Real(0.0);
+    for (size_t i = 0; i < valid_vertices.size(); ++i) {
+        Real mass = state.masses[valid_vertices[i]];
+        inertial += mass * valid_weights[i] * valid_weights[i];
     }
-    Real mass_avg = mass_sum / static_cast<Real>(valid_vertices.size());
+    inertial /= (dt * dt);
 
-    // Inertial term
-    Real k_inertial = mass_avg / (dt * dt);
-
-    // Assemble W * n
     const int block_count = static_cast<int>(valid_vertices.size());
     Eigen::Matrix<Real, Eigen::Dynamic, 1> Wn(3 * block_count);
-    Wn.setZero();
     for (int i = 0; i < block_count; ++i) {
         Wn.segment<3>(3 * i) = valid_weights[i] * n;
     }
 
-    Real Wn_norm = Wn.norm();
-    Real k_elastic = Real(0.0);
-
-    if (Wn_norm > Real(1e-12)) {
-        // Build W matrix
-        Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> W(3 * block_count, 3);
-        W.setZero();
-        Mat3 I = Mat3::Identity();
-        for (int i = 0; i < block_count; ++i) {
-            W.block<3, 3>(3 * i, 0) = valid_weights[i] * I;
-        }
-
-        auto H_sub = extract_submatrix(H_elastic, valid_vertices);
-        Eigen::Matrix<Real, 3, 3> H_eff =
-            (W.transpose() * H_sub * W).template cast<Real>();
-        H_eff = (H_eff + H_eff.transpose()) * Real(0.5);
-
-        Mat3 H_spd = H_eff;
-        enforce_spd(H_spd);
-
-        Vec3 n_unit = n / n_norm;
-        Vec3 Hn = H_spd * n_unit;
-        Real directional = n_unit.dot(Hn);
-        directional = std::max(Real(0.0), directional);
-        k_elastic = Wn_norm * n_norm * directional;
+    auto H_sub = extract_submatrix(H_elastic, valid_vertices);
+    Eigen::Matrix<Real, Eigen::Dynamic, 1> H_times = H_sub * Wn;
+    Real elastic = Wn.dot(H_times);
+    if (elastic < Real(0.0)) {
+        elastic = Real(0.0);
     }
 
-    return k_inertial + k_elastic;
+    return inertial + elastic;
 }
 
 Real Stiffness::compute_pin_stiffness(

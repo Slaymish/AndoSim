@@ -15,8 +15,8 @@ const Real EPSILON = 1e-5;  // Finite difference step
 const Real TOLERANCE = 1e-3; // Relative error tolerance (0.1%)
 
 /**
- * Test barrier scalar function V_weak(g, ḡ, k) against paper equation:
- * V_weak(g, ḡ, k) = -(k/2)(g-ḡ)² ln(g/ḡ) for g ≤ ḡ, else 0
+ * Test barrier scalar function V_weak(g, ḡ, k) against cubic form:
+ * V_weak(g, ḡ, k) = (k/(2ḡ)) (ḡ - g)^3 for g ≤ ḡ, else 0
  */
 void test_barrier_energy_formula() {
     std::cout << "Testing V_weak energy formula..." << std::endl;
@@ -28,10 +28,9 @@ void test_barrier_energy_formula() {
     // Compute via implementation
     Real V = Barrier::compute_energy(g, g_max, k);
     
-    // Compute manually from paper equation
-    Real diff = g - g_max;
-    Real ln_ratio = std::log(g / g_max);
-    Real V_expected = -0.5 * k * diff * diff * ln_ratio;
+    // Compute manually from cubic form
+    Real diff = g_max - g;
+    Real V_expected = 0.5 * k * diff * diff * diff / g_max;
     
     Real error = std::abs(V - V_expected);
     Real rel_error = error / std::abs(V_expected);
@@ -121,10 +120,10 @@ void test_barrier_domain() {
     assert(V_boundary == 0.0);
     std::cout << "  ✓ V=0 at g = ḡ" << std::endl;
     
-    // Test g ≤ 0 (invalid)
+    // Test g ≤ 0 (penetration produces positive energy)
     Real V_negative = Barrier::compute_energy(-0.001, g_max, k);
-    assert(V_negative == 0.0);
-    std::cout << "  ✓ V=0 for g ≤ 0" << std::endl;
+    assert(V_negative > 0.0);
+    std::cout << "  ✓ V>0 for g ≤ 0" << std::endl;
     
     // Test gradient boundary
     Real grad_boundary = Barrier::compute_gradient(g_max, g_max, k);

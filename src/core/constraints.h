@@ -37,7 +37,8 @@ struct ContactConstraint {
 // Strain limiting constraint (per-face)
 struct StrainConstraint {
     Index face_idx;
-    Real max_sigma;             // max(σ1, σ2)
+    Real sigma;                 // Singular value associated with constraint
+    int singular_index = 0;     // 0 or 1 (σ1 or σ2)
     Real stiffness;             // k_SL
     bool active = true;
 };

@@ -62,20 +62,26 @@ struct SimParams {
     Real beta_max = 0.25;           // β_max for accumulation
     int min_newton_steps = 2;
     int max_newton_steps = 8;
-    
+
+    // When friction is active we fall back to a higher Newton count (Eq. 11)
+    int friction_min_newton_steps = 32;
+
     // PCG parameters
     Real pcg_tol = 1e-3;            // Relative L∞ tolerance
     int pcg_max_iters = 1000;
-    
+
     // Contact parameters
     Real contact_gap_max = 0.001;   // ḡ = 1 mm default
     Real wall_gap = 0.001;          // g_wall for walls
     bool enable_ccd = true;
-    
+    Real contact_normal_epsilon = 1e-8; // Normal normalization guard
+    Real barrier_tolerance = 1e-12;      // Triplet drop tolerance
+
     // Friction (optional)
     bool enable_friction = false;
     Real friction_mu = 0.1;
     Real friction_epsilon = 1e-5;   // 0.01 mm
+    Real friction_tangent_threshold = 1e-6;
 
     // Global damping and restitution controls
     Real velocity_damping = 0.0;     // Fraction of velocity removed each step
@@ -86,7 +92,8 @@ struct SimParams {
     Real strain_limit = 0.05;       // 5% default
     Real strain_tau = 0.05;         // τ = strain_limit
     Real strain_epsilon = 0.0;      // ε (will be computed)
-    
+    Real strain_svd_epsilon = 1e-6; // SVD regularization threshold
+
     // Numerical safeguards
     Real hessian_epsilon = 1e-8;    // For SPD enforcement
     Real min_gap = 1e-8;            // Minimum gap for numerical stability

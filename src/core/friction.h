@@ -30,7 +30,8 @@ public:
     static Real compute_friction_stiffness(
         Real normal_force,
         Real friction_mu,
-        Real friction_epsilon
+        Real friction_epsilon,
+        Real tangential_displacement
     );
     
     /**
@@ -114,7 +115,7 @@ public:
      */
     static bool should_apply_friction(
         const Vec3& tangential_displacement,
-        Real threshold = static_cast<Real>(1e-6)
+        Real threshold
     );
 };
 

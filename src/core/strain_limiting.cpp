@@ -9,7 +9,6 @@ namespace ando_barrier {
 
 namespace {
 
-constexpr Real kSmallSingularDiff = static_cast<Real>(1e-6);
 constexpr Real kTinyValue = static_cast<Real>(1e-12);
 
 } // namespace
@@ -128,6 +127,8 @@ void StrainLimiting::rebuild_constraints(
     Real epsilon = params.strain_epsilon > Real(0.0)
         ? to_fraction(params.strain_epsilon)
         : tau;
+    Real svd_epsilon = std::max(params.strain_svd_epsilon, Real(1e-8));
+    Real svd_epsilon = std::max(params.strain_svd_epsilon, Real(1e-8));
 
     if (epsilon <= Real(0.0)) {
         return; // Nothing to enforce
@@ -157,13 +158,6 @@ void StrainLimiting::rebuild_constraints(
             continue;
         }
 
-        Real sigma_max = std::max(sigma[0], sigma[1]);
-        Real gap = (Real(1.0) + tau + epsilon) - sigma_max;
-
-        if (!Barrier::in_domain(gap, epsilon)) {
-            continue; // Outside barrier domain
-        }
-
         Real face_mass = mesh.rest_areas[face] *
             mesh.material.thickness * mesh.material.density;
 
@@ -178,17 +172,26 @@ void StrainLimiting::rebuild_constraints(
         Real elastic_term = w_r.dot(H_sym * w_r);
         elastic_term = std::max(elastic_term, Real(0.0));
 
-        Real gap_clamped = std::max(std::abs(gap), min_gap);
-        Real inertial_term = face_mass / (gap_clamped * gap_clamped);
-        Real stiffness = inertial_term + elastic_term;
+        for (int s = 0; s < 2; ++s) {
+            Real sigma_val = sigma[s];
+            Real gap = (Real(1.0) + tau + epsilon) - sigma_val;
+            if (!Barrier::in_domain(gap, epsilon)) {
+                continue;
+            }
 
-        StrainConstraint constraint;
-        constraint.face_idx = static_cast<Index>(face);
-        constraint.max_sigma = sigma_max;
-        constraint.stiffness = stiffness;
-        constraint.active = true;
+            Real gap_clamped = std::max(std::abs(gap), min_gap);
+            Real inertial_term = face_mass / (gap_clamped * gap_clamped);
+            Real stiffness = inertial_term + elastic_term;
 
-        constraints.strain_limits.push_back(constraint);
+            StrainConstraint constraint;
+            constraint.face_idx = static_cast<Index>(face);
+            constraint.sigma = sigma_val;
+            constraint.singular_index = s;
+            constraint.stiffness = stiffness;
+            constraint.active = true;
+
+            constraints.strain_limits.push_back(constraint);
+        }
     }
 }
 
@@ -236,21 +239,17 @@ void StrainLimiting::accumulate_gradient(
             continue;
         }
 
-        int idx = 0;
-        if (std::abs(sigma[1] - constraint.max_sigma) <
-            std::abs(sigma[0] - constraint.max_sigma)) {
-            idx = 1;
-        }
+        int idx = std::clamp(constraint.singular_index, 0, 1);
 
         Eigen::Matrix<Real, 3, 2> dSigma_dF;
-        if (std::abs(sigma[0] - sigma[1]) < kSmallSingularDiff) {
+        if (std::abs(sigma[0] - sigma[1]) < svd_epsilon) {
             dSigma_dF = (U.col(0) * V.col(0).transpose() +
                          U.col(1) * V.col(1).transpose()) * Real(0.5);
         } else {
             dSigma_dF = U.col(idx) * V.col(idx).transpose();
         }
 
-        Real gap = (Real(1.0) + tau + epsilon) - constraint.max_sigma;
+        Real gap = (Real(1.0) + tau + epsilon) - sigma[idx];
         if (!Barrier::in_domain(gap, epsilon)) {
             continue;
         }
@@ -317,14 +316,10 @@ void StrainLimiting::accumulate_hessian(
             continue;
         }
 
-        int idx = 0;
-        if (std::abs(sigma[1] - constraint.max_sigma) <
-            std::abs(sigma[0] - constraint.max_sigma)) {
-            idx = 1;
-        }
+        int idx = std::clamp(constraint.singular_index, 0, 1);
 
         Eigen::Matrix<Real, 3, 2> dSigma_dF;
-        if (std::abs(sigma[0] - sigma[1]) < kSmallSingularDiff) {
+        if (std::abs(sigma[0] - sigma[1]) < svd_epsilon) {
             dSigma_dF = (U.col(0) * V.col(0).transpose() +
                          U.col(1) * V.col(1).transpose()) * Real(0.5);
         } else {
@@ -342,7 +337,7 @@ void StrainLimiting::accumulate_hessian(
         J.segment<3>(3) = dSigma_dx1;
         J.segment<3>(6) = dSigma_dx2;
 
-        Real gap = (Real(1.0) + tau + epsilon) - constraint.max_sigma;
+        Real gap = (Real(1.0) + tau + epsilon) - sigma[idx];
         if (!Barrier::in_domain(gap, epsilon)) {
             continue;
         }

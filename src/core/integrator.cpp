@@ -6,6 +6,7 @@
 #include "friction.h"
 #include "line_search.h"
 #include "pcg_solver.h"
+#include "matrix_assembly.h"
 #include <iostream>
 #include <algorithm>
 
@@ -105,7 +106,12 @@ Real Integrator::inner_newton_step(
     
     const int n = static_cast<int>(state.num_vertices());
     
-    for (int newton_iter = 0; newton_iter < params.max_newton_steps; ++newton_iter) {
+    int max_newton_iters = params.max_newton_steps;
+    if (params.enable_friction) {
+        max_newton_iters = std::max(max_newton_iters, params.friction_min_newton_steps);
+    }
+
+    for (int newton_iter = 0; newton_iter < max_newton_iters; ++newton_iter) {
         // Compute gradient: g = ∇E
         VecX gradient = VecX::Zero(3 * n);
         compute_gradient(mesh, state, x_target, contacts, constraints, params, beta, gradient, rigid_bodies);
@@ -261,13 +267,16 @@ void Integrator::compute_gradient(
             );
 
             if (contact.type == ContactType::POINT_TRIANGLE) {
-                // Add barrier gradient
-                Barrier::compute_contact_gradient(contact, state,
-                                                 params.contact_gap_max, k_bar, gradient);
+                Barrier::compute_contact_gradient(contact,
+                                                 params.contact_gap_max,
+                                                 k_bar,
+                                                 params.contact_normal_epsilon,
+                                                 gradient);
             } else {
                 Barrier::compute_rigid_contact_gradient(contact,
                                                         params.contact_gap_max,
                                                         k_bar,
+                                                        params.contact_normal_epsilon,
                                                         gradient);
             }
         }
@@ -284,7 +293,9 @@ void Integrator::compute_gradient(
                                                      offset, H_block, params.min_gap);
 
         Barrier::compute_pin_gradient(pin.vertex_idx, pin.target_position, state,
-                                      params.contact_gap_max, k_bar, gradient);
+                                      params.contact_gap_max, k_bar,
+                                      params.contact_normal_epsilon,
+                                      gradient);
     }
 
     // Walls: linear gap function g = n·x - offset
@@ -298,7 +309,9 @@ void Integrator::compute_gradient(
                                                            wall.normal, H_block, params.min_gap);
 
             Barrier::compute_wall_gradient(vi, wall.normal, wall.offset, state,
-                                           params.contact_gap_max, k_bar, gradient);
+                                           params.contact_gap_max, k_bar,
+                                           params.contact_normal_epsilon,
+                                           gradient);
         }
     }
     
@@ -311,22 +324,25 @@ void Integrator::compute_gradient(
                 contact.normal
             );
             
-            if (!FrictionModel::should_apply_friction(tangential)) {
+            Real tangential_norm = tangential.norm();
+            if (!FrictionModel::should_apply_friction(tangential,
+                                                     params.friction_tangent_threshold)) {
                 continue;  // Skip stationary contacts
             }
-            
+
             // Estimate normal force from contact stiffness and gap
             Mat3 H_block = Stiffness::extract_hessian_block(H_total, contact.idx0);
             Real k_contact = Stiffness::compute_contact_stiffness(
                 contact, state, dt, H_elastic
             );
             Real normal_force_estimate = k_contact * std::abs(contact.gap);
-            
+
             // Compute friction stiffness
             Real k_friction = FrictionModel::compute_friction_stiffness(
                 normal_force_estimate,
                 params.friction_mu,
-                params.friction_epsilon
+                params.friction_epsilon,
+                tangential_norm
             );
             
             // Compute friction gradient (restoring force opposing tangential motion)
@@ -365,27 +381,20 @@ void Integrator::assemble_system_matrix(
     hessian.resize(3 * n, 3 * n);
     hessian.setZero();
     
+    MatrixAssembly& assembly = MatrixAssembly::instance();
+    assembly.configure(3 * n);
+
     // Use triplet format for assembly
     std::vector<Triplet> triplets;
     triplets.reserve(9 * n + 9 * mesh.triangles.size() * 9);  // Estimate
-    
-    // 1. Mass/dt² diagonal blocks
-    Real dt2_inv = 1.0 / (dt * dt);
-    for (int i = 0; i < n; ++i) {
-        Real mass = state.masses[i];
-        Real mass_factor = mass * dt2_inv;
-        
-        for (int j = 0; j < 3; ++j) {
-            triplets.push_back(Triplet(3*i + j, 3*i + j, mass_factor));
-        }
-    }
-    
+
+    assembly.append_mass(state, dt, triplets);
+
     // 2. Elastic Hessian: H_elastic
     std::vector<Triplet> elastic_triplets;
     Elasticity::compute_hessian(mesh, state, elastic_triplets);
-    
-    // Add elastic Hessian triplets
-    triplets.insert(triplets.end(), elastic_triplets.begin(), elastic_triplets.end());
+
+    assembly.append_elastic(elastic_triplets, triplets);
     
     // Build base Hessians for stiffness extraction
     SparseMatrix H_base;
@@ -417,14 +426,18 @@ void Integrator::assemble_system_matrix(
             );
 
             if (contact.type == ContactType::POINT_TRIANGLE) {
-                // Append barrier Hessian contributions directly
-                Barrier::compute_contact_hessian(contact, state,
-                                                params.contact_gap_max, k_bar,
-                                                triplets);
+                Barrier::compute_contact_hessian(contact,
+                                                 params.contact_gap_max,
+                                                 k_bar,
+                                                 params.contact_normal_epsilon,
+                                                 params.barrier_tolerance,
+                                                 triplets);
             } else {
                 Barrier::compute_rigid_contact_hessian(contact,
                                                        params.contact_gap_max,
                                                        k_bar,
+                                                       params.contact_normal_epsilon,
+                                                       params.barrier_tolerance,
                                                        triplets);
             }
         }
@@ -442,7 +455,10 @@ void Integrator::assemble_system_matrix(
                                                      H_block, params.min_gap);
 
         Barrier::compute_pin_hessian(pin.vertex_idx, pin.target_position, state,
-                                     params.contact_gap_max, k_bar, triplets);
+                                     params.contact_gap_max, k_bar,
+                                     params.contact_normal_epsilon,
+                                     params.barrier_tolerance,
+                                     triplets);
     }
 
     // Walls
@@ -455,7 +471,10 @@ void Integrator::assemble_system_matrix(
                                                            wall.normal, H_block, params.min_gap);
 
             Barrier::compute_wall_hessian(vi, wall.normal, wall.offset, state,
-                                          params.contact_gap_max, k_bar, triplets);
+                                          params.contact_gap_max, k_bar,
+                                          params.contact_normal_epsilon,
+                                          params.barrier_tolerance,
+                                          triplets);
         }
     }
 
@@ -468,7 +487,9 @@ void Integrator::assemble_system_matrix(
                 contact.normal
             );
             
-            if (!FrictionModel::should_apply_friction(tangential)) {
+            Real tangential_norm = tangential.norm();
+            if (!FrictionModel::should_apply_friction(tangential,
+                                                     params.friction_tangent_threshold)) {
                 continue;  // Skip stationary contacts
             }
             
@@ -484,7 +505,8 @@ void Integrator::assemble_system_matrix(
             Real k_friction = FrictionModel::compute_friction_stiffness(
                 normal_force_estimate,
                 params.friction_mu,
-                params.friction_epsilon
+                params.friction_epsilon,
+                tangential_norm
             );
             
             // Compute friction Hessian (3×3 block for vertex)

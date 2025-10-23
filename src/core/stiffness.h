@@ -62,16 +62,6 @@ public:
     static Real compute_energy(const Mat2& F, Real limit, Real tau, Real epsilon);
 };
 
-// Collision detection moved to collision.h
-// Line search moved to line_search.h
-// Integrator moved to integrator.h
-// PCGSolver moved to pcg_solver.h
-
-class MatrixAssembly {
-public:
-    static void assemble();
-};
-
 class Friction {
 public:
     static Real compute_energy();
