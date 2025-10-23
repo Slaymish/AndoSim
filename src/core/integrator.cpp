@@ -2,6 +2,7 @@
 #include "elasticity.h"
 #include "barrier.h"
 #include "stiffness.h"
+#include "strain_limiting.h"
 #include "friction.h"
 #include "line_search.h"
 #include "pcg_solver.h"
@@ -97,7 +98,7 @@ Real Integrator::inner_newton_step(
     State& state,
     const VecX& x_target,
     const std::vector<ContactPair>& contacts,
-    const Constraints& constraints,
+    Constraints& constraints,
     const SimParams& params,
     Real beta,
     std::vector<RigidBody>* rigid_bodies) {
@@ -186,7 +187,7 @@ void Integrator::compute_gradient(
     const State& state,
     const VecX& x_target,
     const std::vector<ContactPair>& contacts,
-    const Constraints& constraints,
+    Constraints& constraints,
     const SimParams& params,
     Real beta,
     VecX& gradient,
@@ -240,6 +241,13 @@ void Integrator::compute_gradient(
     SparseMatrix H_elastic;
     H_elastic.resize(3 * n, 3 * n);
     H_elastic.setFromTriplets(elastic_triplets.begin(), elastic_triplets.end());
+
+    if (params.enable_strain_limiting) {
+        StrainLimiting::rebuild_constraints(mesh, state, params, H_elastic, constraints);
+        StrainLimiting::accumulate_gradient(mesh, state, constraints, params, gradient);
+    } else {
+        constraints.clear_strain_limits();
+    }
     
     // 3. Barrier forces: Σ ∇V_barrier
     // For each contact
@@ -342,7 +350,7 @@ void Integrator::assemble_system_matrix(
     const Mesh& mesh,
     const State& state,
     const std::vector<ContactPair>& contacts,
-    const Constraints& constraints,
+    Constraints& constraints,
     const SimParams& params,
     Real beta,
     SparseMatrix& hessian,
@@ -387,6 +395,15 @@ void Integrator::assemble_system_matrix(
     SparseMatrix H_elastic;
     H_elastic.resize(3 * n, 3 * n);
     H_elastic.setFromTriplets(elastic_triplets.begin(), elastic_triplets.end());
+
+    if (params.enable_strain_limiting) {
+        if (constraints.strain_limits.empty()) {
+            StrainLimiting::rebuild_constraints(mesh, state, params, H_elastic, constraints);
+        }
+        StrainLimiting::accumulate_hessian(mesh, state, constraints, params, triplets);
+    } else {
+        constraints.clear_strain_limits();
+    }
     
     // 3. Barrier Hessians: Σ H_barrier
     // For each contact
