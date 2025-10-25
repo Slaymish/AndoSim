@@ -129,21 +129,7 @@ jobs:
         rm -rf addon_package
         mkdir -p addon_package
 
-        python - <<'PY'
-import shutil
-from pathlib import Path
-
-src = Path("blender_addon")
-dest = Path("addon_package/ando_barrier")
-if dest.exists():
-    shutil.rmtree(dest)
-dest.parent.mkdir(parents=True, exist_ok=True)
-shutil.copytree(
-    src,
-    dest,
-    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"),
-)
-PY
+        python -c "import pathlib, shutil; src=pathlib.Path('blender_addon'); dest=pathlib.Path('addon_package/ando_barrier'); shutil.rmtree(dest, ignore_errors=True); dest.parent.mkdir(parents=True, exist_ok=True); shutil.copytree(src, dest, ignore=shutil.ignore_patterns('__pycache__','*.pyc','.DS_Store'), dirs_exist_ok=True)"
 
         if [ ! -f addon_package/ando_barrier/ando_barrier_core.py ]; then
           echo "ando_barrier_core.py missing from packaged add-on" >&2
@@ -168,27 +154,7 @@ PY
           echo "PPF solver binary missing at $PPF_SOLVER_PATH" >&2
           exit 1
         fi
-        python - <<'PY'
-import shutil
-from pathlib import Path
-
-src = Path("extern/ppf-contact-solver")
-dest = Path("addon_package/ando_barrier/extern/ppf-contact-solver")
-if dest.exists():
-    shutil.rmtree(dest)
-dest.parent.mkdir(parents=True, exist_ok=True)
-shutil.copytree(
-    src,
-    dest,
-    ignore=shutil.ignore_patterns(
-        "target",
-        ".git",
-        "__pycache__",
-        "*.pyc",
-        ".DS_Store",
-    ),
-)
-PY
+        python -c "import pathlib, shutil; src=pathlib.Path('extern/ppf-contact-solver'); dest=pathlib.Path('addon_package/ando_barrier/extern/ppf-contact-solver'); shutil.rmtree(dest, ignore_errors=True); dest.parent.mkdir(parents=True, exist_ok=True); shutil.copytree(src, dest, ignore=shutil.ignore_patterns('target','.git','__pycache__','*.pyc','.DS_Store'), dirs_exist_ok=True)"
 
         mkdir -p addon_package/ando_barrier/extern/ppf-contact-solver/target/release
         cp "$PPF_SOLVER_PATH" "addon_package/ando_barrier/extern/ppf-contact-solver/target/release/${PPF_SOLVER_NAME}"
