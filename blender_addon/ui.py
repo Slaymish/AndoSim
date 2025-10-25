@@ -89,6 +89,154 @@ def _active_backend(context) -> str:
     return getattr(addon.preferences, "solver_backend", _BACKEND_ANDO)
 
 
+def _configure_layout(layout):
+    """Apply a consistent, compact style to Blender UI panels."""
+    layout.use_property_split = True
+    layout.use_property_decorate = False
+    return layout
+
+
+def _draw_ppf_session(layout):
+    """Render real-time controls for the PPF backend."""
+    try:
+        from . import operators, ppf_adapter
+    except ImportError as exc:  # pragma: no cover - Blender import guard
+        status_box = layout.box()
+        row = status_box.row()
+        row.alert = True
+        row.label(text="PPF controls unavailable.", icon='ERROR')
+        status_box.label(text=str(exc), icon='INFO')
+
+        controls = layout.row()
+        controls.enabled = False
+        controls.operator("ando.init_realtime_simulation", text="Start PPF Session", icon='PLAY')
+        return
+
+    available, message = ppf_adapter.ppf_status()
+    status_box = layout.box()
+    status_row = status_box.row(align=True)
+    status_row.alert = not available
+    status_icon = 'CHECKMARK' if available else 'ERROR'
+    status_row.label(text=message, icon=status_icon)
+
+    state = getattr(operators, "_ppf_state", {})
+    running = state.get('running', False)
+    last_frame = state.get('last_frame', -1)
+    session_dir = state.get('session_dir')
+
+    controls = layout.row(align=True)
+    controls.enabled = available and not running
+    controls.operator(
+        "ando.init_realtime_simulation",
+        text="Start PPF Session" if not running else "Solver Running",
+        icon='PLAY',
+    )
+
+    info_box = layout.box()
+    if session_dir:
+        info_box.label(text=f"Output: {session_dir}", icon='FILE_FOLDER')
+
+    if running:
+        info = info_box.column(align=True)
+        info.label(text="Streaming results to Blender.", icon='INFO')
+        if last_frame is not None and last_frame >= 0:
+            info.label(text=f"Last frame received: {last_frame}", icon='TIME')
+        info_box.operator("ando.reset_realtime_simulation", text="Terminate Session", icon='CANCEL')
+    else:
+        idle = info_box.row(align=True)
+        idle.alert = not available
+        idle_icon = 'PLAY' if available else 'ERROR'
+        idle.label(
+            text="Ready to launch PPF session" if available else "Resolve issues above to enable PPF",
+            icon=idle_icon,
+        )
+        info_box.operator("ando.reset_realtime_simulation", text="Clear Session Data", icon='FILE_REFRESH')
+
+
+def _draw_ando_session(layout, context):
+    """Render real-time controls for the native Ando backend."""
+    core_module = get_core_module(context="Real-time preview panel")
+    core_hint = _core_path_hint(core_module)
+
+    global _LOGGED_REALTIME_CORE_FAILURE  # pylint: disable=global-statement
+    global _LOGGED_OPERATOR_IMPORT_FAILURE  # pylint: disable=global-statement
+
+    if core_module is None:
+        status_box = layout.box()
+        row = status_box.row()
+        row.alert = True
+        row.label(text="Core module unavailable; real-time preview disabled.", icon='ERROR')
+        status_box.label(text="Check the console for the resolved search path.", icon='INFO')
+
+        controls = layout.row()
+        controls.enabled = False
+        controls.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+
+        if not _LOGGED_REALTIME_CORE_FAILURE:
+            _LOGGER.error(
+                "Real-time preview initialization blocked: ando_barrier_core not found. Resolved search path: %s",
+                core_hint,
+            )
+            _LOGGED_REALTIME_CORE_FAILURE = True
+        return
+
+    try:
+        from . import operators
+    except ImportError as exc:  # pragma: no cover - Blender import guard
+        status_box = layout.box()
+        row = status_box.row()
+        row.alert = True
+        row.label(text="Failed to load real-time controls.", icon='ERROR')
+        status_box.label(text="See console for diagnostics.", icon='INFO')
+
+        controls = layout.row()
+        controls.enabled = False
+        controls.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+
+        if not _LOGGED_OPERATOR_IMPORT_FAILURE:
+            _LOGGER.error(
+                "Real-time preview initialization failed to import operators (core hint: %s): %s",
+                core_hint,
+                exc,
+            )
+            _LOGGED_OPERATOR_IMPORT_FAILURE = True
+        return
+
+    _LOGGED_REALTIME_CORE_FAILURE = False
+    _LOGGED_OPERATOR_IMPORT_FAILURE = False
+
+    sim_state = operators._sim_state
+
+    if sim_state['initialized']:
+        status_box = layout.box()
+        header = status_box.row(align=True)
+        header.label(text=f"Frame {sim_state['frame']}", icon='TIME')
+
+        rigid_objs = [obj for obj in sim_state.get('rigid_objects', []) if obj]
+        if rigid_objs:
+            names = ", ".join(obj.name for obj in rigid_objs[:2])
+            if len(rigid_objs) > 2:
+                names += ", …"
+            status_box.label(text=f"Rigid colliders: {names}", icon='CUBE')
+        elif _count_sim_objects(context)[1] > 0:
+            status_box.label(text="Rigid colliders configured; reinitialize to sync.", icon='INFO')
+
+        controls = layout.row(align=True)
+        play_icon = 'PAUSE' if sim_state['playing'] else 'PLAY'
+        play_text = "Pause" if sim_state['playing'] else "Play"
+        controls.operator("ando.toggle_play_simulation", text=play_text, icon=play_icon)
+        controls.operator("ando.step_simulation", text="Step", icon='FRAME_NEXT')
+        controls.operator("ando.reset_realtime_simulation", text="Reset", icon='FILE_REFRESH')
+
+        param_box = layout.box()
+        param_box.label(text="Parameter Sync", icon='SETTINGS')
+        param_box.operator("ando.update_parameters", text="Apply Scene Changes", icon='FILE_REFRESH')
+        param_box.label(text="Push updated materials and settings into the running solver.", icon='INFO')
+    else:
+        layout.label(text="Simulation not initialized.", icon='INFO')
+        layout.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+
+
 class ANDO_PT_main_panel(Panel):
     """Main panel for Ando Barrier Physics"""
     bl_label = "Ando Barrier Physics"
@@ -98,68 +246,82 @@ class ANDO_PT_main_panel(Panel):
     bl_category = 'Ando Physics'
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
 
         backend = _active_backend(context)
         backend_label = "Ando Core" if backend == _BACKEND_ANDO else "PPF Contact Solver"
-        layout.label(text=f"Backend: {backend_label}", icon='MOD_PHYSICS')
+
+        status_box = layout.box()
+        status_header = status_box.row(align=True)
+        status_header.label(text="Solver Backend", icon='MOD_PHYSICS')
+        status_header.label(text=backend_label)
 
         if backend == _BACKEND_ANDO:
             core_module = get_core_module(context="UI status check")
             if core_module is None:
-                layout.label(text="Core module not loaded", icon='ERROR')
-                layout.label(text="Build C++ extension first", icon='INFO')
+                warning = status_box.row()
+                warning.alert = True
+                warning.label(text="Core module not loaded — build the C++ extension and reload.", icon='ERROR')
                 return
 
+            version_row = status_box.row(align=True)
             try:
-                layout.label(text=core_module.version(), icon='INFO')
+                version_row.label(text=f"Core ready • {core_module.version()}", icon='CHECKMARK')
             except AttributeError:
-                layout.label(text="Core module loaded", icon='INFO')
+                version_row.label(text="Core module loaded", icon='CHECKMARK')
         else:
             try:
                 from . import ppf_adapter
             except Exception as exc:  # pragma: no cover - Blender import guard
-                layout.label(text="PPF adapter import failed", icon='ERROR')
-                layout.label(text=str(exc), icon='INFO')
+                warning = status_box.row()
+                warning.alert = True
+                warning.label(text=f"PPF adapter import failed: {exc}", icon='ERROR')
             else:
                 available, message = ppf_adapter.ppf_status()
+                status = status_box.row()
+                status.alert = not available
                 icon = 'CHECKMARK' if available else 'ERROR'
-                layout.label(text=message, icon=icon)
-        
+                status.label(text=message, icon=icon)
+
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
             layout.label(text="Re-enable the add-on or reopen the file.", icon='INFO')
             return
-        
-        # Time stepping
-        box = layout.box()
-        box.label(text="Time Integration", icon='TIME')
-        box.prop(props, "dt")
-        
-        # Adaptive timestepping
-        col = box.column(align=True)
-        col.prop(props, "enable_adaptive_dt", toggle=True)
+
+        timing_box = layout.box()
+        timing_box.label(text="Simulation Timing", icon='TIME')
+        timing_col = timing_box.column(align=True)
+        timing_col.prop(props, "dt", text="Fixed Δt")
+
+        toggle = timing_col.row(align=True)
+        toggle.use_property_split = False
+        toggle.prop(props, "enable_adaptive_dt", text="Adaptive Step", toggle=True)
+
         if props.enable_adaptive_dt:
-            sub = col.box()
-            sub.label(text="CFL Parameters:", icon='AUTO')
-            sub.prop(props, "dt_min", text="Min Δt")
-            sub.prop(props, "dt_max", text="Max Δt")
-            sub.prop(props, "cfl_safety_factor", text="Safety Factor")
-        
-        box.prop(props, "beta_max")
-        
-        # Newton solver
-        box = layout.box()
-        box.label(text="Newton Solver", icon='SETTINGS')
-        box.prop(props, "min_newton_steps")
-        box.prop(props, "max_newton_steps")
-        
-        # PCG solver
-        box = layout.box()
-        box.label(text="PCG Solver", icon='SETTINGS')
-        box.prop(props, "pcg_tol")
-        box.prop(props, "pcg_max_iters")
+            adaptive = timing_col.column(align=True)
+            adaptive.label(text="Adaptive Window", icon='AUTO')
+            adaptive.prop(props, "dt_min", text="Min Δt")
+            adaptive.prop(props, "dt_max", text="Max Δt")
+            adaptive.prop(props, "cfl_safety_factor", text="Safety Factor")
+
+        timing_col.prop(props, "beta_max", text="β Max")
+
+        solver_box = layout.box()
+        solver_box.label(text="Solver Settings", icon='MOD_PHYSICS')
+        solver_col = solver_box.column(align=True)
+
+        newton = solver_col.column(align=True)
+        newton.label(text="Newton", icon='SETTINGS')
+        newton.prop(props, "min_newton_steps", text="Min Steps")
+        newton.prop(props, "max_newton_steps", text="Max Steps")
+
+        solver_col.separator()
+
+        pcg = solver_col.column(align=True)
+        pcg.label(text="PCG", icon='SETTINGS')
+        pcg.prop(props, "pcg_tol", text="Tolerance")
+        pcg.prop(props, "pcg_max_iters", text="Max Iterations")
 
 
 class ANDO_PT_scene_setup_panel(Panel):
@@ -173,7 +335,7 @@ class ANDO_PT_scene_setup_panel(Panel):
     bl_parent_id = "ANDO_PT_main_panel"
 
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         deformable_count, rigid_count = _count_sim_objects(context)
 
         summary = layout.row(align=True)
@@ -184,30 +346,35 @@ class ANDO_PT_scene_setup_panel(Panel):
         if obj and obj.type == 'MESH':
             body_props = getattr(obj, "ando_barrier_body", None)
             box = layout.box()
-            box.label(text=f"Active Mesh: {obj.name}", icon='MESH_DATA')
+            header = box.row(align=True)
+            header.label(text="Active Mesh", icon='MESH_DATA')
+            header.label(text=obj.name)
             if body_props:
-                box.prop(body_props, "enabled", text="Include in Ando Simulation")
+                toggle = box.row(align=True)
+                toggle.use_property_split = False
+                toggle.prop(body_props, "enabled", text="Include in Simulation", toggle=True)
                 if body_props.enabled:
-                    box.prop(body_props, "role", expand=True)
+                    role = box.row(align=True)
+                    role.use_property_split = False
+                    role.prop(body_props, "role", expand=True)
                     if body_props.role == 'RIGID':
-                        box.prop(body_props, "rigid_density")
-                        box.label(text="Rigid colliders follow the solver as a single solid body.", icon='INFO')
-                    else:
-                        box.label(text="Deformables use the material settings below.", icon='INFO')
+                        box.prop(body_props, "rigid_density", text="Density")
                 else:
-                    box.label(text="Disabled meshes are ignored by the solver.", icon='INFO')
+                    info = box.row()
+                    info.label(text="Mesh excluded from the solver.", icon='INFO')
             else:
-                box.label(text="Enable the add-on to configure simulation roles.", icon='ERROR')
+                warning = box.row()
+                warning.alert = True
+                warning.label(text="Enable Ando properties for this mesh to configure roles.", icon='ERROR')
         else:
             layout.label(text="Select a mesh to configure its role.", icon='INFO')
 
         help_box = layout.box()
-        help_box.label(text="Hybrid Workflow", icon='QUESTION')
+        help_box.label(text="Workflow Tips", icon='QUESTION')
         col = help_box.column(align=True)
-        col.label(text="1. Enable at least one deformable surface (cloth/soft body).")
-        col.label(text="2. Mark rigid meshes as colliders to catch and push the cloth.")
-        col.label(text="3. Initialize the real-time preview to sync rigid colliders.")
-        col.label(text="   (Rigid transforms are written back every frame.)")
+        col.label(text="• Enable a deformable mesh (cloth/soft body).")
+        col.label(text="• Mark rigid meshes as colliders.")
+        col.label(text="• Launch the real-time preview to sync transforms.")
 
 
 class ANDO_PT_contact_panel(Panel):
@@ -221,7 +388,7 @@ class ANDO_PT_contact_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -230,23 +397,23 @@ class ANDO_PT_contact_panel(Panel):
         if _active_backend(context) == _BACKEND_PPF:
             layout.label(text="Debug overlays are unavailable for the PPF backend.", icon='INFO')
             return
-        
-        layout.prop(props, "contact_gap_max")
-        layout.prop(props, "wall_gap")
-        layout.prop(props, "enable_ccd")
-        
-        # Ground plane
-        layout.separator()
-        box = layout.box()
-        box.prop(props, "enable_ground_plane")
+        col = layout.column(align=True)
+        col.prop(props, "contact_gap_max", text="Contact Gap")
+        col.prop(props, "wall_gap", text="Wall Gap")
+        col.prop(props, "enable_ccd", text="Continuous Collision Detection")
+
+        ground_box = layout.box()
+        ground_toggle = ground_box.row(align=True)
+        ground_toggle.use_property_split = False
+        ground_toggle.prop(props, "enable_ground_plane", text="Ground Plane", toggle=True)
         if props.enable_ground_plane:
-            box.prop(props, "ground_plane_height")
-        
-        # Constraint operators
+            ground_box.prop(props, "ground_plane_height", text="Height")
+
         layout.separator()
-        layout.label(text="Add Constraints:")
-        layout.operator("ando.add_pin_constraint", icon='PINNED')
-        layout.operator("ando.add_wall_constraint", icon='MESH_PLANE')
+        layout.label(text="Add Constraints", icon='MOD_PHYSICS')
+        ops = layout.row(align=True)
+        ops.operator("ando.add_pin_constraint", text="Pin", icon='PINNED')
+        ops.operator("ando.add_wall_constraint", text="Wall", icon='MESH_PLANE')
 
 class ANDO_PT_friction_panel(Panel):
     """Friction settings panel"""
@@ -263,10 +430,12 @@ class ANDO_PT_friction_panel(Panel):
         if props is None:
             self.layout.label(text="", icon='ERROR')
             return
-        self.layout.prop(props, "enable_friction", text="")
+        layout = _configure_layout(self.layout)
+        layout.use_property_split = False
+        layout.prop(props, "enable_friction", text="")
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -287,7 +456,7 @@ class ANDO_PT_damping_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -311,10 +480,12 @@ class ANDO_PT_strain_limiting_panel(Panel):
         if props is None:
             self.layout.label(text="", icon='ERROR')
             return
-        self.layout.prop(props, "enable_strain_limiting", text="")
+        layout = _configure_layout(self.layout)
+        layout.use_property_split = False
+        layout.prop(props, "enable_strain_limiting", text="")
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -335,7 +506,7 @@ class ANDO_PT_material_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -346,14 +517,19 @@ class ANDO_PT_material_panel(Panel):
             layout.label(text="Try reloading the add-on.", icon='INFO')
             return
         
-        if context.active_object and context.active_object.type == 'MESH':
-            layout.label(text="Material for active mesh:")
-            layout.prop(props, "material_preset", text="Preset")
-            layout.separator()
-            layout.prop(mat_props, "youngs_modulus")
-            layout.prop(mat_props, "poisson_ratio")
-            layout.prop(mat_props, "density")
-            layout.prop(mat_props, "thickness")
+        active_obj = context.active_object
+        if active_obj and active_obj.type == 'MESH':
+            mat_box = layout.box()
+            header = mat_box.row(align=True)
+            header.label(text="Active Mesh", icon='MESH_DATA')
+            header.label(text=active_obj.name)
+            mat_box.prop(props, "material_preset", text="Preset")
+
+            values = mat_box.column(align=True)
+            values.prop(mat_props, "youngs_modulus", text="Young's Modulus")
+            values.prop(mat_props, "poisson_ratio", text="Poisson Ratio")
+            values.prop(mat_props, "density", text="Density")
+            values.prop(mat_props, "thickness", text="Thickness")
         else:
             layout.label(text="Select a mesh object", icon='INFO')
 
@@ -368,21 +544,24 @@ class ANDO_PT_cache_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
             return
         
-        layout.prop(props, "cache_enabled")
+        toggle = layout.row(align=True)
+        toggle.use_property_split = False
+        toggle.prop(props, "cache_enabled", text="Enable Cache", toggle=True)
         
-        row = layout.row(align=True)
-        row.prop(props, "cache_start")
-        row.prop(props, "cache_end")
+        range_row = layout.row(align=True)
+        range_row.prop(props, "cache_start", text="Start")
+        range_row.prop(props, "cache_end", text="End")
         
-        layout.separator()
-        layout.operator("ando.bake_simulation", icon='RENDER_ANIMATION')
-        layout.operator("ando.reset_simulation", icon='FILE_REFRESH')
+        actions = layout.row(align=True)
+        actions.enabled = props.cache_enabled
+        actions.operator("ando.bake_simulation", text="Bake", icon='RENDER_ANIMATION')
+        actions.operator("ando.reset_simulation", text="Clear", icon='FILE_REFRESH')
 
 class ANDO_PT_realtime_panel(Panel):
     """Real-time preview panel"""
@@ -395,7 +574,7 @@ class ANDO_PT_realtime_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
@@ -406,122 +585,10 @@ class ANDO_PT_realtime_panel(Panel):
 
         backend = _active_backend(context)
         if backend == _BACKEND_PPF:
-            try:
-                from . import operators, ppf_adapter
-            except ImportError as exc:  # pragma: no cover - Blender import guard
-                layout.label(text="PPF controls unavailable.", icon='ERROR')
-                layout.label(text=str(exc), icon='INFO')
-                row = layout.row()
-                row.enabled = False
-                row.operator("ando.init_realtime_simulation", text="Start PPF Session", icon='PLAY')
-                return
-
-            available, message = ppf_adapter.ppf_status()
-            icon = 'CHECKMARK' if available else 'ERROR'
-            layout.label(text=message, icon=icon)
-
-            state = getattr(operators, "_ppf_state", {})
-            running = state.get('running', False)
-            last_frame = state.get('last_frame', -1)
-            session_dir = state.get('session_dir')
-
-            row = layout.row()
-            row.enabled = available and not running
-            button_text = "Start PPF Session" if not running else "Solver Running"
-            row.operator("ando.init_realtime_simulation", text=button_text, icon='PLAY')
-
-            if session_dir:
-                layout.label(text=f"Output: {session_dir}", icon='FILE_FOLDER')
-
-            if running:
-                layout.label(text="Solver running; results stream back continuously.", icon='INFO')
-                if last_frame is not None and last_frame >= 0:
-                    layout.label(text=f"Last frame received: {last_frame}", icon='TIME')
-                layout.operator("ando.reset_realtime_simulation", text="Terminate Session", icon='CANCEL')
-            else:
-                status_icon = 'PLAY' if available else 'ERROR'
-                idle_message = "Ready to launch PPF session" if available else "Resolve issues above to enable PPF"
-                layout.label(text=idle_message, icon=status_icon)
-                layout.operator("ando.reset_realtime_simulation", text="Clear Session Data", icon='FILE_REFRESH')
-            return
-        
-        core_module = get_core_module(context="Real-time preview panel")
-        core_hint = _core_path_hint(core_module)
-
-        global _LOGGED_REALTIME_CORE_FAILURE  # pylint: disable=global-statement
-        global _LOGGED_OPERATOR_IMPORT_FAILURE  # pylint: disable=global-statement
-
-        if core_module is None:
-            layout.label(text="Core module unavailable; real-time preview disabled.", icon='ERROR')
-            layout.label(text="See console for resolved path hint.", icon='INFO')
-            row = layout.row()
-            row.enabled = False
-            row.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
-
-            if not _LOGGED_REALTIME_CORE_FAILURE:
-                _LOGGER.error(
-                    "Real-time preview initialization blocked: ando_barrier_core not found. Resolved search path: %s",
-                    core_hint,
-                )
-                _LOGGED_REALTIME_CORE_FAILURE = True
+            _draw_ppf_session(layout)
             return
 
-        try:
-            from . import operators
-        except ImportError as exc:
-            layout.label(text="Failed to load real-time controls.", icon='ERROR')
-            layout.label(text="See console for diagnostics.", icon='INFO')
-            row = layout.row()
-            row.enabled = False
-            row.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
-
-            if not _LOGGED_OPERATOR_IMPORT_FAILURE:
-                _LOGGER.error(
-                    "Real-time preview initialization failed to import operators (core hint: %s): %s",
-                    core_hint,
-                    exc,
-                )
-                _LOGGED_OPERATOR_IMPORT_FAILURE = True
-            return
-
-        _LOGGED_REALTIME_CORE_FAILURE = False
-        _LOGGED_OPERATOR_IMPORT_FAILURE = False
-
-        sim_state = operators._sim_state
-
-        if sim_state['initialized']:
-            layout.label(text=f"Frame: {sim_state['frame']}", icon='TIME')
-
-            rigid_objs = [obj for obj in sim_state.get('rigid_objects', []) if obj]
-            if rigid_objs:
-                names = ", ".join(obj.name for obj in rigid_objs[:2])
-                if len(rigid_objs) > 2:
-                    names += ", …"
-                layout.label(text=f"Rigid colliders: {names}", icon='CUBE')
-            elif _count_sim_objects(context)[1] > 0:
-                layout.label(text="Rigid colliders configured; reinitialize to sync.", icon='INFO')
-
-            # Play/pause button
-            row = layout.row(align=True)
-            play_icon = 'PAUSE' if sim_state['playing'] else 'PLAY'
-            play_text = "Pause" if sim_state['playing'] else "Play"
-            row.operator("ando.toggle_play_simulation", text=play_text, icon=play_icon)
-            
-            # Step button
-            row = layout.row(align=True)
-            row.operator("ando.step_simulation", text="Step", icon='FRAME_NEXT')
-            row.operator("ando.reset_realtime_simulation", text="Reset", icon='FILE_REFRESH')
-            
-            # Hot-reload parameter update
-            layout.separator()
-            box = layout.box()
-            box.label(text="Parameter Control", icon='SETTINGS')
-            box.operator("ando.update_parameters", text="Apply Changes", icon='FILE_REFRESH')
-            box.label(text="Update materials/settings", icon='INFO')
-            box.label(text="without restarting sim")
-        else:
-            layout.label(text="Not initialized", icon='INFO')
-            layout.operator("ando.init_realtime_simulation", text="Initialize", icon='PLAY')
+        _draw_ando_session(layout, context)
 
 class ANDO_PT_debug_panel(Panel):
     """Debug visualization panel"""
@@ -534,7 +601,7 @@ class ANDO_PT_debug_panel(Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
-        layout = self.layout
+        layout = _configure_layout(self.layout)
         props = _get_scene_props(context)
         if props is None:
             layout.label(text="Scene properties unavailable", icon='ERROR')
