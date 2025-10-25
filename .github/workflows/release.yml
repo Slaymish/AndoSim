@@ -64,7 +64,10 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      
     - name: Install dependencies (Ubuntu)
       if: runner.os == 'Linux'
       run: |
@@ -109,39 +112,88 @@ jobs:
         cmake -DCMAKE_BUILD_TYPE=Release -DEigen3_DIR=$env:EIGEN3_INCLUDE_DIR -DCMAKE_PREFIX_PATH="$pybind11_dir" -DPython3_EXECUTABLE="$python_exec" ..
         cmake --build . --config Release
         cmake --install . --config Release
+
+    - name: Build PPF backend
+      shell: bash
+      run: |
+        cargo --version
+        cd extern/ppf-contact-solver
+        cargo build --release --locked --bin ppf-contact-solver
         
     - name: Package addon
       id: package
       shell: bash
       run: |
+        set -euo pipefail
         VERSION=${{ github.ref_name }}
-        mkdir -p addon_package/ando_barrier
-        
-        # Copy Python files and manifest
-        cp blender_addon/*.py addon_package/ando_barrier/
-        cp blender_addon/blender_manifest.toml addon_package/ando_barrier/
+        rm -rf addon_package
+        mkdir -p addon_package
+
+        python - <<'PY'
+import shutil
+from pathlib import Path
+
+src = Path("blender_addon")
+dest = Path("addon_package/ando_barrier")
+if dest.exists():
+    shutil.rmtree(dest)
+dest.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(
+    src,
+    dest,
+    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"),
+)
+PY
+
         if [ ! -f addon_package/ando_barrier/ando_barrier_core.py ]; then
-          echo "ando_barrier_core.py was not copied into the add-on package" >&2
+          echo "ando_barrier_core.py missing from packaged add-on" >&2
           exit 1
         fi
 
         shopt -s nullglob
-        CORE_MODULES=(blender_addon/ando_barrier_core*.so blender_addon/ando_barrier_core*.pyd blender_addon/ando_barrier_core*.dylib)
+        CORE_MODULES=(addon_package/ando_barrier/ando_barrier_core*.so addon_package/ando_barrier/ando_barrier_core*.pyd addon_package/ando_barrier/ando_barrier_core*.dylib)
         shopt -u nullglob
-        FOUND_CORE=false
-        for module in "${CORE_MODULES[@]}"; do
-          if [ -f "$module" ]; then
-            cp "$module" addon_package/ando_barrier/
-            FOUND_CORE=true
-          fi
-        done
-        if [ "$FOUND_CORE" = false ]; then
-          echo "Compiled core module was not found in blender_addon/. Aborting package step." >&2
-          ls -al blender_addon
+        if [ ${#CORE_MODULES[@]} -eq 0 ]; then
+          echo "Compiled core module was not found in addon_package/ando_barrier/. Aborting package step." >&2
+          ls -al addon_package/ando_barrier
           exit 1
         fi
+
+        PPF_SOLVER_NAME="ppf-contact-solver"
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          PPF_SOLVER_NAME="ppf-contact-solver.exe"
+        fi
+        PPF_SOLVER_PATH="extern/ppf-contact-solver/target/release/${PPF_SOLVER_NAME}"
+        if [ ! -f "$PPF_SOLVER_PATH" ]; then
+          echo "PPF solver binary missing at $PPF_SOLVER_PATH" >&2
+          exit 1
+        fi
+        python - <<'PY'
+import shutil
+from pathlib import Path
+
+src = Path("extern/ppf-contact-solver")
+dest = Path("addon_package/ando_barrier/extern/ppf-contact-solver")
+if dest.exists():
+    shutil.rmtree(dest)
+dest.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(
+    src,
+    dest,
+    ignore=shutil.ignore_patterns(
+        "target",
+        ".git",
+        "__pycache__",
+        "*.pyc",
+        ".DS_Store",
+    ),
+)
+PY
+
+        mkdir -p addon_package/ando_barrier/extern/ppf-contact-solver/target/release
+        cp "$PPF_SOLVER_PATH" "addon_package/ando_barrier/extern/ppf-contact-solver/target/release/${PPF_SOLVER_NAME}"
         
-        # Copy built module
+        # Archive packaged add-on
         if [ "${{ runner.os }}" = "Windows" ]; then
           PACKAGE_NAME="ando_barrier_${VERSION}_windows_x64.zip"
           cd addon_package
