@@ -121,7 +121,7 @@ jobs:
       run: |
         cargo --version
         cd extern/ppf-contact-solver
-        cargo build --release --locked --bin ppf-contact-solver
+        cargo build --release --bin ppf-contact-solver
         
     - name: Package addon
       id: package
