@@ -11,6 +11,10 @@ from mathutils import Vector
 
 # Make ppf frontend importable from the submodule
 _PPFDIR = Path(__file__).resolve().parent.parent / "extern" / "ppf-contact-solver" / "frontend"
+_PPFROOT = _PPFDIR.parent
+_PPF_SOLVER_NAME = "ppf-contact-solver.exe" if sys.platform.startswith("win") else "ppf-contact-solver"
+_PPF_SOLVER_PATH = _PPFROOT / "target" / "release" / _PPF_SOLVER_NAME
+
 if _PPFDIR.exists() and str(_PPFDIR) not in sys.path:
     sys.path.append(str(_PPFDIR))
 
@@ -52,6 +56,9 @@ def _ppf_status() -> Tuple[bool, str]:
     if not _PPFDIR.exists():
         return False, f"PPF frontend not found at {_PPFDIR}"
 
+    if not _PPFROOT.exists():
+        return False, f"PPF project root not found at {_PPFROOT}"
+
     if any(item is None for item in (SessionManager, FixedScene, app_param)):
         message = (
             _PPF_IMPORT_ERROR
@@ -62,6 +69,12 @@ def _ppf_status() -> Tuple[bool, str]:
 
     if not _cuda_available():
         return False, "nvidia-smi not found or no NVIDIA GPU detected"
+
+    if not _PPF_SOLVER_PATH.exists():
+        return False, (
+            f"PPF solver binary missing at {_PPF_SOLVER_PATH}. "
+            "Build the submodule with `cargo build --release` inside extern/ppf-contact-solver."
+        )
 
     return True, "PPF solver ready"
 
@@ -195,7 +208,7 @@ class PPFSession:
 
         mgr = SessionManager(app_name="ando_ppf",
                              app_root=app_root,
-                             proj_root=str(Path.cwd()),
+                             proj_root=str(_PPFROOT),
                              data_dirpath=app_root)
 
         session = mgr.create(scene, name="")
