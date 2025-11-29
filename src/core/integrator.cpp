@@ -12,6 +12,61 @@
 
 namespace ando_barrier {
 
+namespace {
+
+// Helper struct to hold friction computation results for a single contact
+struct FrictionData {
+    Vec3 tangential;
+    Real tangential_norm;
+    Real k_friction;
+    bool should_apply;
+};
+
+// Compute friction data for a contact. Returns false if friction should not be applied.
+// This helper extracts the duplicated friction stiffness computation from both
+// compute_gradient and assemble_system_matrix.
+bool compute_friction_data(
+    const ContactPair& contact,
+    const State& state,
+    Real dt,
+    const SparseMatrix& H_base,
+    const SparseMatrix& H_elastic,
+    const SimParams& params,
+    FrictionData& out
+) {
+    // Extract tangential motion
+    out.tangential = FrictionModel::extract_tangential(
+        state.positions[contact.idx0] - state.positions_prev[contact.idx0],
+        contact.normal
+    );
+    
+    out.tangential_norm = out.tangential.norm();
+    if (!FrictionModel::should_apply_friction(out.tangential,
+                                              params.friction_tangent_threshold)) {
+        out.should_apply = false;
+        return false;
+    }
+    
+    // Estimate normal force from contact stiffness and gap
+    Real k_contact = Stiffness::compute_contact_stiffness(
+        contact, state, dt, H_elastic
+    );
+    Real normal_force_estimate = k_contact * std::abs(contact.gap);
+    
+    // Compute friction stiffness
+    out.k_friction = FrictionModel::compute_friction_stiffness(
+        normal_force_estimate,
+        params.friction_mu,
+        params.friction_epsilon,
+        out.tangential_norm
+    );
+    
+    out.should_apply = true;
+    return true;
+}
+
+} // namespace
+
 void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
                      const SimParams& params,
                      std::vector<RigidBody>* rigid_bodies) {
@@ -318,39 +373,17 @@ void Integrator::compute_gradient(
     // 5. Friction forces (if enabled)
     if (params.enable_friction && params.friction_mu > 0.0) {
         for (const auto& contact : contacts) {
-            // Only apply friction to active contacts with sufficient motion
-            Vec3 tangential = FrictionModel::extract_tangential(
-                state.positions[contact.idx0] - state.positions_prev[contact.idx0],
-                contact.normal
-            );
-            
-            Real tangential_norm = tangential.norm();
-            if (!FrictionModel::should_apply_friction(tangential,
-                                                     params.friction_tangent_threshold)) {
+            FrictionData fric;
+            if (!compute_friction_data(contact, state, dt, H_total, H_elastic, params, fric)) {
                 continue;  // Skip stationary contacts
             }
-
-            // Estimate normal force from contact stiffness and gap
-            Mat3 H_block = Stiffness::extract_hessian_block(H_total, contact.idx0);
-            Real k_contact = Stiffness::compute_contact_stiffness(
-                contact, state, dt, H_elastic
-            );
-            Real normal_force_estimate = k_contact * std::abs(contact.gap);
-
-            // Compute friction stiffness
-            Real k_friction = FrictionModel::compute_friction_stiffness(
-                normal_force_estimate,
-                params.friction_mu,
-                params.friction_epsilon,
-                tangential_norm
-            );
             
             // Compute friction gradient (restoring force opposing tangential motion)
             Vec3 friction_grad = FrictionModel::compute_gradient(
                 state.positions[contact.idx0],
                 state.positions_prev[contact.idx0],
                 contact.normal,
-                k_friction
+                fric.k_friction
             );
             
             // Add to gradient vector
@@ -481,36 +514,13 @@ void Integrator::assemble_system_matrix(
     // 5. Friction Hessians (if enabled)
     if (params.enable_friction && params.friction_mu > 0.0) {
         for (const auto& contact : contacts) {
-            // Only apply friction to active contacts with sufficient motion
-            Vec3 tangential = FrictionModel::extract_tangential(
-                state.positions[contact.idx0] - state.positions_prev[contact.idx0],
-                contact.normal
-            );
-            
-            Real tangential_norm = tangential.norm();
-            if (!FrictionModel::should_apply_friction(tangential,
-                                                     params.friction_tangent_threshold)) {
+            FrictionData fric;
+            if (!compute_friction_data(contact, state, dt, H_base, H_elastic, params, fric)) {
                 continue;  // Skip stationary contacts
             }
             
-            // Estimate normal force from contact stiffness and gap
-            // F_n ≈ k_contact * gap (simplified for friction stiffness)
-            Mat3 H_block = Stiffness::extract_hessian_block(H_base, contact.idx0);
-            Real k_contact = Stiffness::compute_contact_stiffness(
-                contact, state, dt, H_elastic
-            );
-            Real normal_force_estimate = k_contact * std::abs(contact.gap);
-            
-            // Compute friction stiffness
-            Real k_friction = FrictionModel::compute_friction_stiffness(
-                normal_force_estimate,
-                params.friction_mu,
-                params.friction_epsilon,
-                tangential_norm
-            );
-            
             // Compute friction Hessian (3×3 block for vertex)
-            Mat3 friction_hess = FrictionModel::compute_hessian(contact.normal, k_friction);
+            Mat3 friction_hess = FrictionModel::compute_hessian(contact.normal, fric.k_friction);
             
             // Add to triplets (diagonal block only, since friction is per-vertex)
             int idx = static_cast<int>(contact.idx0);

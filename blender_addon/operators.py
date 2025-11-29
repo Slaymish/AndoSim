@@ -135,6 +135,56 @@ def _default_stats():
     }
 
 
+def _init_material_from_props(abc, props):
+    """Initialize a Material object from Blender scene properties.
+    
+    Args:
+        abc: The ando_barrier_core module
+        props: Blender scene properties (context.scene.ando_barrier)
+    
+    Returns:
+        Initialized Material object
+    """
+    mat_props = props.material_properties
+    material = abc.Material()
+    material.youngs_modulus = mat_props.youngs_modulus
+    material.poisson_ratio = mat_props.poisson_ratio
+    material.density = mat_props.density
+    material.thickness = mat_props.thickness
+    return material
+
+
+def _init_params_from_props(abc, props):
+    """Initialize a SimParams object from Blender scene properties.
+    
+    Args:
+        abc: The ando_barrier_core module
+        props: Blender scene properties (context.scene.ando_barrier)
+    
+    Returns:
+        Initialized SimParams object
+    """
+    params = abc.SimParams()
+    params.dt = props.dt / 1000.0  # Convert ms to seconds
+    params.beta_max = props.beta_max
+    params.min_newton_steps = props.min_newton_steps
+    params.max_newton_steps = props.max_newton_steps
+    params.pcg_tol = props.pcg_tol
+    params.pcg_max_iters = props.pcg_max_iters
+    params.contact_gap_max = props.contact_gap_max
+    params.wall_gap = props.wall_gap
+    params.enable_ccd = props.enable_ccd
+    params.enable_friction = props.enable_friction
+    params.friction_mu = props.friction_mu
+    params.friction_epsilon = props.friction_epsilon
+    params.velocity_damping = props.velocity_damping
+    params.contact_restitution = props.contact_restitution
+    params.enable_strain_limiting = props.enable_strain_limiting
+    params.strain_limit = props.strain_limit
+    params.strain_tau = props.strain_tau
+    return params
+
+
 def _collect_rigid_bodies(context, exclude_obj=None, reporter=None):
     """Convert Blender meshes tagged as rigid colliders into Ando rigid bodies."""
 
@@ -348,33 +398,9 @@ class ANDO_OT_bake_simulation(Operator):
         
         self.report({'INFO'}, f"Mesh: {len(vertices)} vertices, {len(triangles)} triangles")
         
-        # Initialize material properties
-        mat_props = props.material_properties
-        material = abc.Material()
-        material.youngs_modulus = mat_props.youngs_modulus
-        material.poisson_ratio = mat_props.poisson_ratio
-        material.density = mat_props.density
-        material.thickness = mat_props.thickness
-        
-        # Initialize simulation parameters
-        params = abc.SimParams()
-        params.dt = props.dt / 1000.0  # Convert ms to seconds
-        params.beta_max = props.beta_max
-        params.min_newton_steps = props.min_newton_steps
-        params.max_newton_steps = props.max_newton_steps
-        params.pcg_tol = props.pcg_tol
-        params.pcg_max_iters = props.pcg_max_iters
-        params.contact_gap_max = props.contact_gap_max
-        params.wall_gap = props.wall_gap
-        params.enable_ccd = props.enable_ccd
-        params.enable_friction = props.enable_friction
-        params.friction_mu = props.friction_mu
-        params.friction_epsilon = props.friction_epsilon
-        params.velocity_damping = props.velocity_damping
-        params.contact_restitution = props.contact_restitution
-        params.enable_strain_limiting = props.enable_strain_limiting
-        params.strain_limit = props.strain_limit
-        params.strain_tau = props.strain_tau
+        # Initialize material and simulation parameters using shared helpers
+        material = _init_material_from_props(abc, props)
+        params = _init_params_from_props(abc, props)
         
         # Initialize mesh and state
         mesh = abc.Mesh()
@@ -672,33 +698,9 @@ class ANDO_OT_init_realtime_simulation(Operator):
             self.report({'ERROR'}, "Mesh has no triangles")
             return {'CANCELLED'}
 
-        # Initialize material
-        mat_props = props.material_properties
-        material = abc.Material()
-        material.youngs_modulus = mat_props.youngs_modulus
-        material.poisson_ratio = mat_props.poisson_ratio
-        material.density = mat_props.density
-        material.thickness = mat_props.thickness
-
-        # Initialize parameters
-        params = abc.SimParams()
-        params.dt = props.dt / 1000.0
-        params.beta_max = props.beta_max
-        params.min_newton_steps = props.min_newton_steps
-        params.max_newton_steps = props.max_newton_steps
-        params.pcg_tol = props.pcg_tol
-        params.pcg_max_iters = props.pcg_max_iters
-        params.contact_gap_max = props.contact_gap_max
-        params.wall_gap = props.wall_gap
-        params.enable_ccd = props.enable_ccd
-        params.enable_friction = props.enable_friction
-        params.friction_mu = props.friction_mu
-        params.friction_epsilon = props.friction_epsilon
-        params.velocity_damping = props.velocity_damping
-        params.contact_restitution = props.contact_restitution
-        params.enable_strain_limiting = props.enable_strain_limiting
-        params.strain_limit = props.strain_limit
-        params.strain_tau = props.strain_tau
+        # Initialize material and simulation parameters using shared helpers
+        material = _init_material_from_props(abc, props)
+        params = _init_params_from_props(abc, props)
 
         # Initialize simulation objects
         mesh = abc.Mesh()
