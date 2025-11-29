@@ -1,4 +1,5 @@
 #include "elasticity.h"
+#include "stiffness.h"
 #include <Eigen/Eigenvalues>
 
 namespace ando_barrier {
@@ -74,9 +75,9 @@ void Elasticity::compute_hessian(const Mesh& mesh, const State& state,
                 Index ia = tri.v[a];
                 Index ib = tri.v[b];
                 
-                // Enforce SPD
+                // Enforce SPD using shared utility from Stiffness
                 Mat3 H_spd = H[a][b];
-                enforce_spd(H_spd);
+                Stiffness::enforce_spd(H_spd);
                 
                 // Add 3×3 block
                 for (int k = 0; k < 3; ++k) {
@@ -87,26 +88,6 @@ void Elasticity::compute_hessian(const Mesh& mesh, const State& state,
             }
         }
     }
-}
-
-void Elasticity::enforce_spd(Mat3& H, Real epsilon) {
-    // Symmetrize
-    H = (H + H.transpose()) * 0.5;
-    
-    // Eigenvalue clamping
-    Eigen::SelfAdjointEigenSolver<Mat3> eigen_solver(H);
-    Vec3 eigenvalues = eigen_solver.eigenvalues();
-    Mat3 eigenvectors = eigen_solver.eigenvectors();
-    
-    // Clamp negative eigenvalues
-    for (int i = 0; i < 3; ++i) {
-        if (eigenvalues[i] < epsilon) {
-            eigenvalues[i] = epsilon;
-        }
-    }
-    
-    // Reconstruct
-    H = eigenvectors * eigenvalues.asDiagonal() * eigenvectors.transpose();
 }
 
 Real Elasticity::face_energy(const Mat2& F, const Material& mat, Real area) {

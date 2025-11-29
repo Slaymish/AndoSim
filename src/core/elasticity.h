@@ -6,6 +6,9 @@
 
 namespace ando_barrier {
 
+// Forward declaration to avoid circular include
+class Stiffness;
+
 // Shell elasticity energy, gradient, and Hessian computation
 // Supports ARAP or Baraff-Witkin FE
 class Elasticity {
@@ -21,9 +24,6 @@ public:
     // Compute elastic Hessian (explicit assembly)
     static void compute_hessian(const Mesh& mesh, const State& state, 
                                std::vector<Triplet>& triplets);
-    
-    // Enforce SPD by symmetrization and eigenvalue clamping
-    static void enforce_spd(Mat3& H, Real epsilon = 1e-8);
     
 private:
     // Per-face energy and derivatives (ARAP-style)
