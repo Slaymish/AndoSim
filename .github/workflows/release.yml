@@ -9,47 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Ando Barrier ${{ github.ref_name }}
-          draft: true
-          prerelease: false
-          body: |
-            ## Ando Barrier Physics Simulator - ${{ github.ref_name }}
-            
-            ### Installation
-            Download the appropriate package for your platform and install:
-            1. Download the `.zip` file for your OS
-            2. In Blender: Edit → Preferences → Add-ons → Install
-            3. Select the downloaded file
-            4. Enable "Ando Barrier Physics"
-            
-            ### Platform Support
-            - **Linux**: x86_64, Python 3.11+
-            - **macOS**: Universal (Intel + Apple Silicon), Python 3.11+
-            - **Windows**: x64, Python 3.11+
-            
-            ### What's New
-            See CHANGELOG.md for detailed changes.
-            
-            ---
-            
-            **Note**: This is an automated draft release. Please verify all platform builds before publishing.
-
   build-and-upload:
     name: Build ${{ matrix.os }}
-    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -183,11 +144,31 @@ jobs:
         echo "package_name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
         
     - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: true
+        prerelease: false
+        body: |
+          ## Ando Barrier Physics Simulator - ${{ github.ref_name }}
+
+          ### Installation
+          Download the appropriate package for your platform and install:
+          1. Download the `.zip` file for your OS
+          2. In Blender: Edit → Preferences → Add-ons → Install
+          3. Select the downloaded file
+          4. Enable "Ando Barrier Physics"
+
+          ### Platform Support
+          - **Linux**: x86_64, Python 3.11+
+          - **macOS**: Universal (Intel + Apple Silicon), Python 3.11+
+          - **Windows**: x64, Python 3.11+
+
+          ### What's New
+          See CHANGELOG.md for detailed changes.
+
+          ---
+
+          **Note**: This is an automated draft release. Please verify all platform builds before publishing.
+        files: ./${{ steps.package.outputs.package_name }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./${{ steps.package.outputs.package_name }}
-        asset_name: ${{ steps.package.outputs.package_name }}
-        asset_content_type: application/zip
