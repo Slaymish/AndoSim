@@ -5,7 +5,7 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-11-03
 
 ### Fixed
 - Cloth is elastic again. The deformation gradient was built from the rest pose, so elastic energy was zero in every configuration and the sheet could never bend, sag or wrinkle.
@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - Installation guidance states that prebuilt modules require a matching Python minor version, OS and architecture.
+
+### Notes
+- Prebuilt modules still require a Blender whose bundled Python matches the
+  module's major.minor version, and the same OS and architecture.
 
 ## [1.1.1] - 2025-10-25
 
