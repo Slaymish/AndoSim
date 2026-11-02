@@ -83,6 +83,9 @@ jobs:
 
     - name: Build PPF backend
       if: runner.os == 'Linux'
+      # The add-on works without this optional CUDA backend; a runner without a
+      # usable nvcc must not block the release.
+      continue-on-error: true
       shell: bash
       run: |
         cargo --version
@@ -118,13 +121,15 @@ jobs:
           PPF_SOLVER_NAME="ppf-contact-solver"
           PPF_SOLVER_PATH="extern/ppf-contact-solver/target/release/${PPF_SOLVER_NAME}"
           if [ ! -f "$PPF_SOLVER_PATH" ]; then
-            echo "PPF solver binary missing at $PPF_SOLVER_PATH" >&2
-            exit 1
-          fi
+            # Optional CUDA backend: ship the add-on without it rather than
+            # dropping the whole Linux release.
+            echo "::warning::PPF solver binary missing at $PPF_SOLVER_PATH; packaging without it."
+          else
           python -c "import pathlib, shutil; src=pathlib.Path('extern/ppf-contact-solver'); dest=pathlib.Path('addon_package/ando_barrier/extern/ppf-contact-solver'); shutil.rmtree(dest, ignore_errors=True); dest.parent.mkdir(parents=True, exist_ok=True); shutil.copytree(src, dest, ignore=shutil.ignore_patterns('target','.git','__pycache__','*.pyc','.DS_Store'), dirs_exist_ok=True)"
 
           mkdir -p addon_package/ando_barrier/extern/ppf-contact-solver/target/release
           cp "$PPF_SOLVER_PATH" "addon_package/ando_barrier/extern/ppf-contact-solver/target/release/${PPF_SOLVER_NAME}"
+          fi
         else
           echo "Skipping PPF solver packaging on ${{ runner.os }} (CUDA toolchain unavailable)."
         fi
