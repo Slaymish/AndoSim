@@ -153,13 +153,19 @@ Real Integrator::inner_newton_step(
     const Mesh& mesh,
     State& state,
     const VecX& x_target,
-    const std::vector<ContactPair>& contacts,
+    std::vector<ContactPair>& contacts,
     Constraints& constraints,
     const SimParams& params,
     Real beta,
     std::vector<RigidBody>* rigid_bodies) {
     
     const int n = static_cast<int>(state.num_vertices());
+
+    // Refresh contact candidates at the current iterate. Contacts found once at
+    // the start of the step go stale as Newton moves the cloth, so the step can
+    // walk straight into an obstacle and only notice once it is already inside
+    // the barrier's singular region.
+    detect_collisions(mesh, state, contacts, rigid_bodies, params.contact_gap_max);
     
     int max_newton_iters = params.max_newton_steps;
     if (params.enable_friction) {

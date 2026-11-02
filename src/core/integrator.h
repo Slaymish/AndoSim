@@ -73,7 +73,7 @@ private:
         const Mesh& mesh,
         State& state,
         const VecX& x_target,
-        const std::vector<ContactPair>& contacts,
+        std::vector<ContactPair>& contacts,
         Constraints& constraints,
         const SimParams& params,
         Real beta,
