@@ -44,6 +44,43 @@ static Vec3 compute_triangle_barycentric(const Vec3& p, const Vec3& a,
 
 } // namespace
 
+namespace {
+
+// Surface neighbours in a flat rest pose are at zero distance and would sit at
+// the singularity of the barrier for ever. Only proximity that is new since the
+// rest pose counts as a self collision.
+bool rest_gap_exceeds(const Mesh& mesh, const ContactPair& pair, Real /*threshold*/) {
+    if (mesh.vertices.size() <= static_cast<size_t>(std::max({pair.idx0, pair.idx1, pair.idx2, pair.idx3}))) {
+        return true;
+    }
+    Real rest_gap = 0.0;
+    Vec3 normal, wp, wq;
+    if (pair.type == ContactType::POINT_TRIANGLE) {
+        if (!Collision::narrow_phase_point_triangle(mesh.vertices[pair.idx0],
+                                                    mesh.vertices[pair.idx1],
+                                                    mesh.vertices[pair.idx2],
+                                                    mesh.vertices[pair.idx3],
+                                                    rest_gap, normal, wp, wq)) {
+            return true;
+        }
+    } else if (pair.type == ContactType::EDGE_EDGE) {
+        if (!Collision::narrow_phase_edge_edge(mesh.vertices[pair.idx0],
+                                               mesh.vertices[pair.idx1],
+                                               mesh.vertices[pair.idx2],
+                                               mesh.vertices[pair.idx3],
+                                               rest_gap, normal, wp, wq)) {
+            return true;
+        }
+    } else {
+        return true;
+    }
+    // Only a pair that was already touching in the rest pose is excluded; a
+    // contact that merely exists at rest but with a real gap is still physical.
+    return std::abs(rest_gap) > Real(1e-5);
+}
+
+} // namespace
+
 // Build AABB for triangle
 static AABB compute_triangle_aabb(const Vec3& a, const Vec3& b, const Vec3& c) {
     AABB box;
@@ -68,25 +105,22 @@ int Collision::build_bvh_recursive(std::vector<BVHNode>& nodes,
                                    int start, int end) {
     int node_idx = nodes.size();
     nodes.emplace_back();
-    BVHNode& node = nodes[node_idx];
     
     // Compute bounding box for all primitives in range
     for (int i = start; i < end; ++i) {
-        node.bbox.expand(prim_boxes[prim_indices[i]]);
+        nodes[node_idx].bbox.expand(prim_boxes[prim_indices[i]]);
     }
     
     int num_prims = end - start;
     
-    // Leaf node if few primitives
-    if (num_prims <= 4) {
-        if (num_prims == 1) {
-            node.prim_idx = prim_indices[start];
-        }
+    // Each leaf stores exactly one primitive.
+    if (num_prims == 1) {
+        nodes[node_idx].prim_idx = prim_indices[start];
         return node_idx;
     }
     
     // Find best split axis
-    int axis = node.bbox.longest_axis();
+    int axis = nodes[node_idx].bbox.longest_axis();
     
     // Sort primitives by centroid along axis
     std::sort(prim_indices.begin() + start, prim_indices.begin() + end,
@@ -98,8 +132,11 @@ int Collision::build_bvh_recursive(std::vector<BVHNode>& nodes,
     int mid = start + num_prims / 2;
     
     // Recursively build children
-    node.left = build_bvh_recursive(nodes, prim_boxes, prim_indices, start, mid);
-    node.right = build_bvh_recursive(nodes, prim_boxes, prim_indices, mid, end);
+    const int left = build_bvh_recursive(nodes, prim_boxes, prim_indices, start, mid);
+    const int right = build_bvh_recursive(nodes, prim_boxes, prim_indices, mid, end);
+    // Recursion may reallocate nodes, so access the parent by index afterward.
+    nodes[node_idx].left = left;
+    nodes[node_idx].right = right;
     
     return node_idx;
 }
@@ -197,15 +234,17 @@ void Collision::traverse_bvh_pair(const std::vector<BVHNode>& bvh1,
 // Broad phase for vertex-triangle
 void Collision::broad_phase_triangles(const Mesh& mesh, const State& state,
                                      const std::vector<BVHNode>& bvh,
-                                     std::vector<ContactPair>& candidates) {
+                                     std::vector<ContactPair>& candidates,
+                                     Real detection_threshold) {
     if (bvh.empty()) return;
     
     // For each vertex, find overlapping triangles
     for (size_t v = 0; v < state.positions.size(); ++v) {
         const Vec3& p = state.positions[v];
         
-        // Create point AABB with small epsilon
-        AABB point_box(p - Vec3::Constant(1e-4), p + Vec3::Constant(1e-4));
+        // Include the full barrier range in candidate generation.
+        AABB point_box(p - Vec3::Constant(detection_threshold),
+                       p + Vec3::Constant(detection_threshold));
         
         // Traverse BVH to find overlapping triangles
         std::vector<int> overlapping_tris;
@@ -247,12 +286,18 @@ void Collision::broad_phase_triangles(const Mesh& mesh, const State& state,
 void Collision::broad_phase_edges(const Mesh& mesh, const State& state,
                                  const std::vector<BVHNode>& tri_bvh,
                                  const std::vector<BVHNode>& edge_bvh,
-                                 std::vector<ContactPair>& candidates) {
+                                 std::vector<ContactPair>& candidates,
+                                     Real detection_threshold) {
     if (edge_bvh.empty()) return;
     
     // Find overlapping edge pairs
     std::vector<std::pair<int, int>> overlaps;
-    traverse_bvh_pair(edge_bvh, edge_bvh, 0, 0, overlaps);
+    auto expanded_bvh = edge_bvh;
+    for (auto& node : expanded_bvh) {
+        node.bbox.min.array() -= detection_threshold;
+        node.bbox.max.array() += detection_threshold;
+    }
+    traverse_bvh_pair(edge_bvh, expanded_bvh, 0, 0, overlaps);
     
     // Create candidate pairs
     for (const auto& [e1, e2] : overlaps) {
@@ -455,11 +500,12 @@ bool Collision::narrow_phase_edge_edge(const Vec3& p0, const Vec3& p1,
 void Collision::detect_wall_collisions(const State& state,
                                       const Vec3& plane_normal,
                                       Real plane_offset,
-                                      std::vector<ContactPair>& contacts) {
+                                      std::vector<ContactPair>& contacts,
+                                      Real detection_threshold) {
     for (size_t i = 0; i < state.positions.size(); ++i) {
         Real signed_dist = plane_normal.dot(state.positions[i]) - plane_offset;
         
-        if (signed_dist < 0.01) {  // Within collision threshold
+        if (signed_dist < detection_threshold) {  // Within collision threshold
             ContactPair pair;
             pair.type = ContactType::WALL;
             pair.idx0 = i;
@@ -476,7 +522,8 @@ void Collision::detect_wall_collisions(const State& state,
 
 // Full collision detection
 void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
-                                     std::vector<ContactPair>& contacts) {
+                                     std::vector<ContactPair>& contacts,
+                                      Real detection_threshold) {
     contacts.clear();
     
     // Build BVHs
@@ -488,8 +535,8 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
     
     // Broad phase
     std::vector<ContactPair> candidates;
-    broad_phase_triangles(mesh, state, tri_bvh, candidates);
-    broad_phase_edges(mesh, state, tri_bvh, edge_bvh, candidates);
+    broad_phase_triangles(mesh, state, tri_bvh, candidates, detection_threshold);
+    broad_phase_edges(mesh, state, tri_bvh, edge_bvh, candidates, detection_threshold);
     
     // Narrow phase
     for (auto& pair : candidates) {
@@ -501,7 +548,8 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
 
             if (narrow_phase_point_triangle(p, a, b, c, pair.gap, pair.normal,
                                            pair.witness_p, pair.witness_q)) {
-                if (pair.gap < 0.01) {  // Within collision threshold
+                if (pair.gap < detection_threshold &&
+                    rest_gap_exceeds(mesh, pair, detection_threshold)) {
                     Vec3 bary = compute_triangle_barycentric(pair.witness_q, a, b, c);
                     pair.barycentric = bary;
                     pair.weights[0] = static_cast<Real>(1.0);
@@ -520,7 +568,8 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
 
             if (narrow_phase_edge_edge(p0, p1, q0, q1, pair.gap, pair.normal,
                                       pair.witness_p, pair.witness_q)) {
-                if (pair.gap < 0.01) {  // Within collision threshold
+                if (pair.gap < detection_threshold &&
+                    rest_gap_exceeds(mesh, pair, detection_threshold)) {
                     pair.vertex_count = 4;
                     pair.weights[0] = static_cast<Real>(0.5);
                     pair.weights[1] = static_cast<Real>(0.5);
@@ -535,11 +584,12 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
 
 void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
                                       const std::vector<RigidBody>& rigids,
-                                      std::vector<ContactPair>& contacts) {
+                                      std::vector<ContactPair>& contacts,
+                                      Real detection_threshold) {
     contacts.clear();
 
     // Deformable self collisions
-    detect_all_collisions(mesh, state, contacts);
+    detect_all_collisions(mesh, state, contacts, detection_threshold);
 
     if (rigids.empty()) {
         return;
@@ -568,7 +618,7 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
 
                 if (narrow_phase_point_triangle(p, a, b, c, pair.gap, pair.normal,
                                                 pair.witness_p, pair.witness_q)) {
-                    if (pair.gap < 0.01) {
+                    if (pair.gap < detection_threshold) {
                         pair.vertex_count = 1;
                         pair.weights[0] = static_cast<Real>(1.0);
                         contacts.push_back(pair);

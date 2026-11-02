@@ -1,5 +1,7 @@
 #include <cassert>
+#include <cmath>
 #include <iostream>
+#include <string>
 
 #include "mesh.h"
 #include "state.h"
@@ -9,7 +11,7 @@
 
 using namespace ando_barrier;
 
-int main() {
+int main(int argc, char** argv) {
     // Simple cloth triangle positioned above the origin
     std::vector<Vec3> verts = {
         Vec3(0.0, 0.0, 0.02),
@@ -53,6 +55,31 @@ int main() {
     params.beta_max = 0.25f;
     params.pcg_tol = 1e-4f;
     params.max_newton_steps = 5;
+
+    if (argc == 2 && (std::string(argv[1]) == "--rigid-force-only" ||
+                      std::string(argv[1]) == "--barrier-range-force-only")) {
+        // Isolate rigid force accumulation from Newton motion: an active contact
+        // above the plate must push the plate down, opposite the cloth force.
+        State force_state = state;
+        for (auto& position : force_state.positions) {
+            // Keep projections strictly inside the rigid triangle.
+            position[0] -= Real(0.01);
+            position[1] -= Real(0.01);
+            position[2] = std::string(argv[1]) == "--barrier-range-force-only"
+                ? Real(0.02) : Real(0.005);
+        }
+        auto force_bodies = bodies;
+        SimParams force_params = params;
+        force_params.max_newton_steps = 0;
+        Integrator::step(mesh, force_state, constraints, force_params, &force_bodies);
+        std::cout << "Rigid contact force probe velocity: "
+                  << force_bodies[0].linear_velocity().transpose() << std::endl;
+        const Vec3 velocity = force_bodies[0].linear_velocity();
+        assert(velocity[2] < Real(0));
+        assert(std::abs(velocity[0]) < Real(1e-5));
+        assert(std::abs(velocity[1]) < Real(1e-5));
+        return 0;
+    }
 
     Integrator::step(mesh, state, constraints, params, &bodies);
 

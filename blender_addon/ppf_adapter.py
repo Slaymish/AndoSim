@@ -112,8 +112,8 @@ def _mesh_to_numpy(obj, depsgraph):
         return None, None
     M = obj_eval.matrix_world
     verts = np.array([M @ v.co for v in mesh.vertices], dtype=np.float32)
-    tris = np.array([tuple(loop.vertex_index for loop in tri.loops)
-                     for tri in mesh.loop_triangles], dtype=np.int32)
+    tris = np.array([tuple(tri.vertices) for tri in mesh.loop_triangles],
+                    dtype=np.int32)
     obj_eval.to_mesh_clear()
     return verts, tris
 

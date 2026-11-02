@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.17)
 project(ando_barrier_core VERSION 1.0.0 LANGUAGES CXX)
 
 # C++ Standard
@@ -43,8 +43,11 @@ if(NOT Eigen3_FOUND)
         message(FATAL_ERROR "Eigen3 not found. Please install Eigen3 or set EIGEN3_INCLUDE_DIR environment variable.")
     endif()
 endif()
-find_package(pybind11 REQUIRED)
+# Select Python before pybind11 so its module suffix and headers use the
+# explicitly requested interpreter rather than legacy FindPythonInterp.
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+set(PYBIND11_FINDPYTHON ON)
+find_package(pybind11 REQUIRED)
 
 # Include directories
 include_directories(${EIGEN3_INCLUDE_DIR})
@@ -93,7 +96,9 @@ set(CORE_HEADERS
 )
 
 # Python bindings module
-pybind11_add_module(ando_barrier_core 
+# WITH_SOABI uses FindPython3's suffix, including when a build directory
+# still contains cached legacy pybind11 PYTHON_MODULE_EXTENSION values.
+pybind11_add_module(ando_barrier_core WITH_SOABI
     src/py/bindings.cpp
     ${CORE_SOURCES}
 )

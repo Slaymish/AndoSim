@@ -103,7 +103,8 @@ def test_state_apply_gravity_updates_velocities() -> None:
     positions = state.get_positions()
 
     assert np.allclose(velocities, initial_velocities + np.array(gravity) * dt)
-    assert np.allclose(positions, initial_positions + velocities * dt)
+    # Gravity is a velocity kick only; positions are advanced by the integrator.
+    assert np.allclose(positions, initial_positions)
 
 
 def test_state_apply_gravity_validation() -> None:

@@ -43,7 +43,7 @@ public:
     size_t num_edges() const { return edges.size(); }
     
     // Compute deformation gradient for a face
-    Mat2 compute_F(Index face_idx) const;
+    Mat2 compute_F(Index face_idx, const std::vector<Vec3>& positions) const;
     
 private:
     void build_topology();

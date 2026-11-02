@@ -5,6 +5,23 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Cloth is elastic again. The deformation gradient was built from the rest pose, so elastic energy was zero in every configuration and the sheet could never bend, sag or wrinkle.
+- Pinned vertices now stay on their targets. The pin barrier only resisted drift inside the barrier range, so a vertex that drifted further was released; a two-corner curtain fell off its pins entirely.
+- Gravity is applied as a velocity kick only; positions were advanced twice and every falling distance was doubled.
+- Self-contacts that already exist in the rest pose are excluded, so a flat sheet no longer collides with its own coplanar neighbours and stalls the step.
+- Bundled Python fallback is now preferred over the repository compatibility shim, and manual core selection replaces a cached module instead of being ignored.
+- Background Blender no longer opens the manual core-selection dialog; native import failures explain the Python minor version, OS and architecture requirement.
+- CMake respects the requested Python interpreter (and its ABI suffix) even when a build directory holds legacy pybind11 values.
+- Rigid bodies receive the reaction to a cloth contact in the correct direction.
+- Collision detection honours the configured barrier range instead of an unconditional 10 mm cutoff.
+- BVH construction no longer drops primitives in 2 to 4-primitive ranges or writes child indices through a reference invalidated by recursion.
+
+### Documentation
+- Installation guidance states that prebuilt modules require a matching Python minor version, OS and architecture.
+
 ## [1.1.1] - 2025-10-25
 
 ### Changed

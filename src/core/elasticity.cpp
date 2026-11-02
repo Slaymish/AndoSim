@@ -8,7 +8,7 @@ Real Elasticity::compute_energy(const Mesh& mesh, const State& state) {
     Real energy = 0.0;
     
     for (size_t i = 0; i < mesh.num_triangles(); ++i) {
-        Mat2 F = mesh.compute_F(i);
+        Mat2 F = mesh.compute_F(i, state.positions);
         energy += face_energy(F, mesh.material, mesh.rest_areas[i]);
     }
     
@@ -22,7 +22,7 @@ void Elasticity::compute_gradient(const Mesh& mesh, const State& state, VecX& gr
         const Triangle& tri = mesh.triangles[i];
         
         // Get current F
-        Mat2 F = mesh.compute_F(i);
+        Mat2 F = mesh.compute_F(i, state.positions);
         
         // Compute PK1 stress: P = k * 2 * (F - I)
         Real mu = mesh.material.youngs_modulus / (2.0 * (1.0 + mesh.material.poisson_ratio));
@@ -33,10 +33,11 @@ void Elasticity::compute_gradient(const Mesh& mesh, const State& state, VecX& gr
         // H = P * Dm_inv^T gives force gradient in material coordinates
         Mat2 H = P * mesh.Dm_inv[i].transpose();
         
-        // Get vertices and compute local frame
-        const Vec3& v0 = mesh.vertices[tri.v[0]];
-        const Vec3& v1 = mesh.vertices[tri.v[1]];
-        const Vec3& v2 = mesh.vertices[tri.v[2]];
+        // Local frame of the *current* triangle, used to map the material-space
+        // force back to 3D.
+        const Vec3& v0 = state.positions[tri.v[0]];
+        const Vec3& v1 = state.positions[tri.v[1]];
+        const Vec3& v2 = state.positions[tri.v[2]];
         
         Vec3 e1 = v1 - v0;
         Vec3 e2 = v2 - v0;
@@ -64,7 +65,7 @@ void Elasticity::compute_hessian(const Mesh& mesh, const State& state,
                                  std::vector<Triplet>& triplets) {
     for (size_t i = 0; i < mesh.num_triangles(); ++i) {
         const Triangle& tri = mesh.triangles[i];
-        Mat2 F = mesh.compute_F(i);
+        Mat2 F = mesh.compute_F(i, state.positions);
         
         Mat3 H[3][3];
         face_hessian(F, mesh.material, mesh.rest_areas[i], mesh.Dm_inv[i], H);

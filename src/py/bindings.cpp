@@ -293,9 +293,11 @@ PYBIND11_MODULE(ando_barrier_core, m) {
 
             auto g = gravity.unchecked<1>();
             Vec3 grav(g(0), g(1), g(2));
+            // Velocity kick only: Integrator::step predicts positions from the
+            // velocity. Advancing positions here as well integrated gravity
+            // twice and doubled every falling distance.
             for (size_t i = 0; i < state.num_vertices(); ++i) {
                 state.velocities[i] += grav * dt;
-                state.positions[i] += state.velocities[i] * dt;
             }
         }, "Apply gravity acceleration to all vertices");
     

@@ -43,7 +43,18 @@ public:
      */
     static std::vector<ContactPair> compute_contacts(const Mesh& mesh,
                                                      const State& state,
-                                                     const std::vector<RigidBody>* rigid_bodies = nullptr);
+                                                     const std::vector<RigidBody>* rigid_bodies = nullptr,
+                                                     Real detection_threshold = Real(0.01));
+
+    /**
+     * Apply velocity damping for one substep.
+     *
+     * ``damping_rate`` is a per-second rate, so the retained fraction is
+     * exp(-rate * dt) and the result does not depend on how the second is
+     * divided into substeps. Exposed for the regression test; ``step`` is the
+     * only caller in the solver.
+     */
+    static void apply_velocity_damping(State& state, Real damping_rate, Real dt);
 
 private:
     /**
@@ -62,7 +73,7 @@ private:
         const Mesh& mesh,
         State& state,
         const VecX& x_target,
-        const std::vector<ContactPair>& contacts,
+        std::vector<ContactPair>& contacts,
         Constraints& constraints,
         const SimParams& params,
         Real beta,
@@ -129,9 +140,9 @@ private:
      */
     static void detect_collisions(const Mesh& mesh, const State& state,
                                   std::vector<ContactPair>& contacts,
-                                  const std::vector<RigidBody>* rigid_bodies);
+                                  const std::vector<RigidBody>* rigid_bodies,
+                                  Real detection_threshold);
 
-    static void apply_velocity_damping(State& state, Real damping_factor);
     static void apply_contact_restitution(const Mesh& mesh,
                                           const Constraints& constraints,
                                           State& state,

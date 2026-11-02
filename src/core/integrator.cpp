@@ -93,7 +93,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     
     // 2. Detect collisions
     std::vector<ContactPair> contacts;
-    detect_collisions(mesh, state, contacts, rigid_bodies);
+    detect_collisions(mesh, state, contacts, rigid_bodies, params.contact_gap_max);
     
     // 3. β accumulation loop (Section 3.6)
     Real beta = 0.0;
@@ -136,7 +136,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
         }
 
         if (params.velocity_damping > 0.0) {
-            apply_velocity_damping(state, params.velocity_damping);
+            apply_velocity_damping(state, params.velocity_damping, dt);
         }
 
         if (params.contact_restitution > 0.0) {
@@ -147,19 +147,40 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     if (rigid_bodies && !rigid_bodies->empty()) {
         apply_rigid_coupling(mesh, state, *rigid_bodies, constraints, params);
     }
+
+    // Pins are hard constraints. The barrier form only resists a drift smaller
+    // than the barrier range, so a vertex that drifts further than g_max was
+    // released for good and the cloth fell off its pins.
+    for (const auto& pin : constraints.pins) {
+        if (!pin.active) {
+            continue;
+        }
+        const Index idx = pin.vertex_idx;
+        if (idx < 0 || static_cast<size_t>(idx) >= state.positions.size()) {
+            continue;
+        }
+        state.positions[idx] = pin.target_position;
+        state.velocities[idx] = Vec3::Zero();
+    }
 }
 
 Real Integrator::inner_newton_step(
     const Mesh& mesh,
     State& state,
     const VecX& x_target,
-    const std::vector<ContactPair>& contacts,
+    std::vector<ContactPair>& contacts,
     Constraints& constraints,
     const SimParams& params,
     Real beta,
     std::vector<RigidBody>* rigid_bodies) {
     
     const int n = static_cast<int>(state.num_vertices());
+
+    // Refresh contact candidates at the current iterate. Contacts found once at
+    // the start of the step go stale as Newton moves the cloth, so the step can
+    // walk straight into an obstacle and only notice once it is already inside
+    // the barrier's singular region.
+    detect_collisions(mesh, state, contacts, rigid_bodies, params.contact_gap_max);
     
     int max_newton_iters = params.max_newton_steps;
     if (params.enable_friction) {
@@ -216,7 +237,7 @@ Real Integrator::inner_newton_step(
         Real alpha = LineSearch::search(
             mesh, state, direction, contacts,
             pins_for_search, wall_normal, wall_offset,
-            1.25
+            1.0
         );
         
         if (alpha < 1e-8) {
@@ -224,7 +245,7 @@ Real Integrator::inner_newton_step(
         }
         
         // Update positions: x ← x + α * extension * d
-        VecX x_new = x_current + alpha * 1.25 * direction;
+        VecX x_new = x_current + alpha * direction;
         state.unflatten_positions(x_new);
         
         if (alpha > 0.99) {
@@ -237,9 +258,10 @@ Real Integrator::inner_newton_step(
 
 std::vector<ContactPair> Integrator::compute_contacts(const Mesh& mesh,
                                                      const State& state,
-                                                     const std::vector<RigidBody>* rigid_bodies) {
+                                                     const std::vector<RigidBody>* rigid_bodies,
+                                                     Real detection_threshold) {
     std::vector<ContactPair> contacts;
-    detect_collisions(mesh, state, contacts, rigid_bodies);
+    detect_collisions(mesh, state, contacts, rigid_bodies, detection_threshold);
     return contacts;
 }
 
@@ -541,22 +563,29 @@ void Integrator::assemble_system_matrix(
     // Enforce symmetry
     SparseMatrix hessian_t = hessian.transpose();
     hessian = (hessian + hessian_t) * 0.5;
+
 }
 
 void Integrator::detect_collisions(const Mesh& mesh, const State& state,
                                   std::vector<ContactPair>& contacts,
-                                  const std::vector<RigidBody>* rigid_bodies) {
+                                  const std::vector<RigidBody>* rigid_bodies,
+                                  Real detection_threshold) {
     contacts.clear();
     if (rigid_bodies) {
-        Collision::detect_all_collisions(mesh, state, *rigid_bodies, contacts);
+        Collision::detect_all_collisions(mesh, state, *rigid_bodies, contacts, detection_threshold);
     } else {
-        Collision::detect_all_collisions(mesh, state, contacts);
+        Collision::detect_all_collisions(mesh, state, contacts, detection_threshold);
     }
 }
 
-void Integrator::apply_velocity_damping(State& state, Real damping_factor) {
-    Real clamped = std::clamp(damping_factor, Real(0.0), Real(1.0));
-    Real scale = Real(1.0) - clamped;
+void Integrator::apply_velocity_damping(State& state, Real damping_rate, Real dt) {
+    if (damping_rate <= Real(0.0) || dt <= Real(0.0)) {
+        return;
+    }
+    // A per-second rate, integrated exactly over the substep. Scaling by
+    // (1 - rate) each substep made the damping depend on the timestep: at a
+    // 1 ms step it removed ~100% of the velocity per second.
+    Real scale = std::exp(-damping_rate * dt);
     for (auto& v : state.velocities) {
         v *= scale;
     }
@@ -591,9 +620,9 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
 
     std::vector<ContactPair> contacts;
     if (rigid_bodies) {
-        Collision::detect_all_collisions(mesh, state, *rigid_bodies, contacts);
+        Collision::detect_all_collisions(mesh, state, *rigid_bodies, contacts, params.contact_gap_max);
     } else {
-        Collision::detect_all_collisions(mesh, state, contacts);
+        Collision::detect_all_collisions(mesh, state, contacts, params.contact_gap_max);
     }
 
     Real gap_limit = std::max(params.contact_gap_max, Real(1e-5));
@@ -685,7 +714,7 @@ void Integrator::apply_rigid_coupling(const Mesh& mesh,
     (void)constraints;
 
     std::vector<ContactPair> contacts;
-    Collision::detect_all_collisions(mesh, state, rigid_bodies, contacts);
+    Collision::detect_all_collisions(mesh, state, rigid_bodies, contacts, params.contact_gap_max);
 
     const int n = static_cast<int>(state.num_vertices());
     const Real dt = params.dt;
@@ -743,9 +772,10 @@ void Integrator::apply_rigid_coupling(const Mesh& mesh,
             continue;
         }
 
+        // Cloth force is -dV/dg * n; the rigid reaction is +dV/dg * n.
         Vec3 force = dV_dg * normal;
         RigidBody& body = rigid_bodies[contact.rigid_body_index];
-        body.apply_force(contact.witness_q, -force, Real(0.0));
+        body.apply_force(contact.witness_q, force, Real(0.0));
     }
 
     for (auto& body : rigid_bodies) {

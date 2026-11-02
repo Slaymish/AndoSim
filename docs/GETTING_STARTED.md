@@ -15,35 +15,43 @@ Welcome to **AndoSim**, a high-accuracy barrier-based physics solver that now ru
 
 ### Prebuilt Module Compatibility
 
-The GitHub Actions **build** and **release** workflows compile `ando_barrier_core` against **Python 3.11**. Use the table below to determine which Blender versions can load those prebuilt artifacts directly. For Blender releases that bundle a different Python version, rebuild the module locally with that interpreter before packaging the add-on.
+Release binaries built against **CPython 3.11** require the **same Python major
+and minor version** in Blender. “Python 3.11+” is not sufficient: a normal
+`cp311` extension cannot be loaded by Python 3.12 or 3.13. Matching Python is
+necessary but does not guarantee compatibility; the binary must also match the
+operating system, CPU architecture, and required native libraries.
 
-| Blender Version | Bundled Python | Prebuilt Artifact from CI? |
-|-----------------|----------------|----------------------------|
-| 4.5             | 3.11.11        | ✅ Works out of the box     |
-| 4.4             | 3.11.11        | ✅ Works out of the box     |
-| 4.3             | 3.11.9         | ✅ Works out of the box     |
-| 4.2             | 3.11.7         | ✅ Works out of the box     |
-| 4.1             | 3.11.6         | ✅ Works out of the box     |
-| 4.0             | 3.10.13        | ❌ Rebuild with Blender's Python |
-| 3.6 LTS         | 3.10.13        | ❌ Rebuild with Blender's Python |
-| 3.5             | 3.10.9         | ❌ Rebuild with Blender's Python |
-| 3.4             | 3.10.8         | ❌ Rebuild with Blender's Python |
-| 3.3             | 3.10.13        | ❌ Rebuild with Blender's Python |
-| 3.2             | 3.10.2         | ❌ Rebuild with Blender's Python |
-| 3.1             | 3.10.2         | ❌ Rebuild with Blender's Python |
-| 3.0             | 3.9.7          | ❌ Rebuild with Blender's Python |
-| 2.93            | 3.9.2          | ❌ Rebuild with Blender's Python |
-| 2.92            | 3.7.7          | ❌ Rebuild with Blender's Python |
-| 2.91            | 3.7.7          | ❌ Rebuild with Blender's Python |
-| 2.90            | 3.7.4          | ❌ Rebuild with Blender's Python |
-| 2.83            | 3.7.4          | ❌ Rebuild with Blender's Python |
-| 2.82            | 3.7.5          | ❌ Rebuild with Blender's Python |
-| 2.81            | 3.7.4          | ❌ Rebuild with Blender's Python |
-| 2.80            | 3.7.0          | ❌ Rebuild with Blender's Python |
-| 2.79            | 3.5.3          | ❌ Rebuild with Blender's Python |
-| 2.78            | 3.5.2          | ❌ Rebuild with Blender's Python |
+Check the actual Blender runtime in its Python Console:
 
-> When rebuilding, run `./build.sh` (or the CMake steps in the README) using Blender's bundled Python executable so the generated binary matches your target environment.
+```python
+import sys, platform
+print(sys.version)
+print(platform.system(), platform.machine())
+```
+
+For example, Blender running Python 3.13 needs a module rebuilt for Python 3.13;
+a Python 3.11 release binary will not work. A “compiled extension required”
+message means the active module lacks the native simulation API. It does not
+by itself establish an ABI mismatch or a Windows-specific failure.
+
+Rebuild using the target Blender installation's bundled Python executable:
+
+```bash
+./build.sh --python /absolute/path/to/blender/python/bin/python3.13
+```
+
+Use the actual executable path and version from your installation. For Windows,
+use the CMake build instructions in the README with
+`-DPython3_EXECUTABLE="C:/path/to/Blender/python/bin/python.exe"`. Configure in a
+fresh build directory when switching interpreters, and confirm CMake reports the
+target Python version and development files. Copy the resulting `.so` (Linux or
+macOS) or `.pyd` (Windows) into `blender_addon/`, then restart Blender. Renaming a
+`cp311` binary does not change its ABI.
+
+The bundled Python fallback allows the add-on to load without a matching native
+binary, but baking and real-time simulation require the compiled core. Keep both
+`ando_barrier_core.py` and `_core_fallback.py` when copying the add-on. Background
+Blender does not open the manual core-selection dialog.
 
 ---
 
@@ -141,8 +149,8 @@ Use **hot-reload** (changing values while the preview runs) to study stability r
 
 ## 5. Troubleshooting
 
-- **Add-on not visible?** Confirm the folder name is `ando_barrier` and that `ando_barrier_core*.so` exists inside.
-- **"Core module not loaded" error?** Re-run `./build.sh` with Blender's Python, or copy the prebuilt module from `build/` into `blender_addon`.
+- **Add-on not visible?** Confirm the folder name is `ando_barrier` and that it contains `__init__.py` and both bundled fallback files.
+- **"Core module not loaded" error?** Check the System Console for import errors and confirm both fallback files are present. For native simulation, rebuild with `./build.sh --python /path/to/blenders/python` and copy the matching binary into `blender_addon`.
 - **PPF session cancels immediately?** Make sure `nvidia-smi` works from a terminal and that the `extern/ppf-contact-solver` submodule is synced. The add-on preferences panel echoes the exact status message detected at startup.
 - **Simulation won't initialize?** Ensure you selected a mesh object and triangulated geometry; check Blender's System Console for stack traces.
 - **Low frame rate?** Reduce mesh resolution, increase timestep slightly, or disable debug overlays.
