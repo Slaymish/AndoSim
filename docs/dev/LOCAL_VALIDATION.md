@@ -55,6 +55,27 @@ or published-release validation was performed. No GitHub issue was closed.
 
 ## Fixed defects and retained boundaries
 
+- Deformation gradient now uses the current positions instead of the rest pose.
+  With the rest vertices it was always identity, so the cloth had no elastic
+  force at all: it fell, landed and never bent. A stretched sheet now contracts
+  16% and halves its elastic energy (ElasticityTest).
+- `apply_gravity` only changes velocities. It also advanced positions, so every
+  falling distance was integrated twice; measured fall now matches g t²/2.
+- Self-contacts that already exist in the rest pose (a flat sheet's own coplanar
+  neighbours, 16 pairs at gap 0) are excluded. They sat on the barrier
+  singularity, made every line-search step infeasible, and held the cloth to
+  1/16 of a step.
+- The Newton step no longer applies a 1.25x extension that the feasibility-only
+  line search could never reject.
+- Measured on a 5x5 sheet at dt = 1 ms: free fall 0.49 m/s at 50 ms (= g·t),
+  pinned sheet sags with 34% peak strain, stretched sheet contracts.
+
+**Still broken:** contact response. A sheet driven into a rigid sphere or the
+ground floor passes through it, and once the barrier engages the solve diverges
+to NaN (PCG reports a non-SPD matrix). `test_collision_detection_setup` and
+`test_multi_frame_stability` are marked xfail rather than deleted.
+
+
 - CMake now respects the requested Python3 interpreter and its ABI suffix,
   including when an old build cache contains pybind11 legacy suffix values.
 - The loader no longer executes the repository compatibility shim ahead of the

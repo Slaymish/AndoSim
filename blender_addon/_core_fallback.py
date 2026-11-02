@@ -137,8 +137,8 @@ class State:
         if g.shape != (3,):
             raise ValueError("Gravity must be a 3D vector")
 
+        # Velocity kick only; positions are advanced by the integrator step.
         self._velocities += g * dt
-        self._positions += self._velocities * dt
 
 
 class Constraints:
