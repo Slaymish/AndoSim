@@ -69,22 +69,29 @@ def grid(nx: int, ny: int, size: float, plane: str) -> bpy.types.Object:
     return obj
 
 
-def cloth_material(obj: bpy.types.Object, base=(0.62, 0.09, 0.11)) -> None:
+def cloth_material(obj: bpy.types.Object, base=(0.55, 0.07, 0.09)) -> None:
+    """Solid fabric with a fine weave in the bump, so it reads as cloth."""
     mat = bpy.data.materials.new('ClothMat')
     mat.use_nodes = True
     nt = mat.node_tree
     bsdf = nt.nodes['Principled BSDF']
-    bsdf.inputs['Roughness'].default_value = 0.55
-    bsdf.inputs['Sheen Weight'].default_value = 0.6
-    bsdf.inputs['Sheen Roughness'].default_value = 0.4
-    uv = nt.nodes.new('ShaderNodeTexCoord')
-    checker = nt.nodes.new('ShaderNodeTexChecker')
-    checker.inputs['Scale'].default_value = 40.0
-    checker.inputs['Color1'].default_value = (*base, 1.0)
-    darker = tuple(c * 0.55 for c in base)
-    checker.inputs['Color2'].default_value = (*darker, 1.0)
-    nt.links.new(uv.outputs['UV'], checker.inputs['Vector'])
-    nt.links.new(checker.outputs['Color'], bsdf.inputs['Base Color'])
+    bsdf.inputs['Base Color'].default_value = (*base, 1.0)
+    bsdf.inputs['Roughness'].default_value = 0.62
+    bsdf.inputs['Sheen Weight'].default_value = 0.7
+    bsdf.inputs['Sheen Roughness'].default_value = 0.35
+    bsdf.inputs['Specular IOR Level'].default_value = 0.35
+
+    weave = nt.nodes.new('ShaderNodeTexWave')
+    weave.wave_type = 'BANDS'
+    weave.bands_direction = 'DIAGONAL'
+    weave.inputs['Scale'].default_value = 220.0
+    weave.inputs['Distortion'].default_value = 1.5
+
+    bump = nt.nodes.new('ShaderNodeBump')
+    bump.inputs['Strength'].default_value = 0.14
+    bump.inputs['Distance'].default_value = 0.002
+    nt.links.new(weave.outputs['Fac'], bump.inputs['Height'])
+    nt.links.new(bump.outputs['Normal'], bsdf.inputs['Normal'])
     obj.data.materials.append(mat)
 
 
@@ -134,6 +141,36 @@ def camera(location, target, lens=52) -> None:
     bpy.context.scene.camera = cam
 
 
+
+def frame_cloth(obj, direction=(0.52, -1.0, 0.10), lens=45, margin=1.18) -> None:
+    """Place the camera so the whole deformation stays in frame, however far it sags."""
+    import mathutils
+
+    keys = [k for k in obj.data.shape_keys.key_blocks if k.name == 'Basis' or k.name.startswith('frame_')]
+    pts = []
+    for k in keys:
+        for vert in k.data:
+            pts.append(obj.matrix_world @ vert.co)
+    if not pts:
+        return
+    lo = mathutils.Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+    hi = mathutils.Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+    centre = (lo + hi) / 2.0
+    radius = (hi - lo).length / 2.0
+
+    cam_data = bpy.data.cameras.new('AutoCam')
+    cam_data.lens = lens
+    fov = 2.0 * math.atan(18.0 / lens)          # vertical half-angle for a 36 mm sensor
+    distance = margin * radius / math.sin(fov / 2.0)
+    d = mathutils.Vector(direction).normalized()
+    cam = bpy.data.objects.new('AutoCam', cam_data)
+    bpy.context.collection.objects.link(cam)
+    cam.location = centre + d * distance
+    aim(cam, centre)
+    bpy.context.scene.camera = cam
+    print(f'[render] framed centre={tuple(round(c, 2) for c in centre)} radius={radius:.2f} '
+          f'distance={distance:.2f}', flush=True)
+
 def setup(scene: str, frames: int, dt: float, gap: float):
     clear()
     studio()
@@ -142,15 +179,15 @@ def setup(scene: str, frames: int, dt: float, gap: float):
     area_light('Rim', 220, 2.0, (-1.6, 3.2, 1.9), (0, 0, 0.3), (1.0, 0.85, 0.7))
 
     if scene == 'drape':
-        obj = grid(29, 25, 2.0, 'XZ')
+        obj = grid(23, 19, 2.0, 'XZ')
         obj.location = (0.0, 0.0, 0.0)
-        cloth_material(obj, (0.60, 0.08, 0.10))
+        cloth_material(obj, (0.52, 0.06, 0.08))
         xs = [v.co.x for v in obj.data.vertices if v.co.z > 0.99]
         corners = [v.index for v in obj.data.vertices
                    if v.co.z > 0.99 and (abs(v.co.x - min(xs)) < 1e-6 or abs(v.co.x - max(xs)) < 1e-6)]
         vg = obj.vertex_groups.new(name='ando_pins')
         vg.add(corners, 1.0, 'ADD')
-        camera((2.45, -4.65, 0.78), (0.0, 0.0, 0.02), lens=42)
+        camera((2.55, -4.35, 0.30), (0.0, 0.0, -0.38), lens=42)
     elif scene == 'wave':
         # A corrugated sheet pinned at two corners: gravity pulls the folds
         # straight, which shows the elasticity without any contact to resolve.
@@ -158,7 +195,7 @@ def setup(scene: str, frames: int, dt: float, gap: float):
         for v in obj.data.vertices:
             v.co.y += 0.16 * math.sin(3.0 * math.pi * (v.co.x / 2.0 + 0.5))
         obj.data.update()
-        cloth_material(obj, (0.16, 0.38, 0.30))
+        cloth_material(obj, (0.10, 0.26, 0.20))
         xs = [v.co.x for v in obj.data.vertices if v.co.z > 0.99]
         corners = [v.index for v in obj.data.vertices
                    if v.co.z > 0.99 and (abs(v.co.x - min(xs)) < 1e-6 or abs(v.co.x - max(xs)) < 1e-6)]
@@ -167,7 +204,7 @@ def setup(scene: str, frames: int, dt: float, gap: float):
         camera((1.95, -3.15, 0.35), (0.0, 0.0, -0.02), lens=56)
     elif scene == 'swing':
         obj = grid(33, 21, 2.2, 'XZ')
-        cloth_material(obj, (0.10, 0.26, 0.52))
+        cloth_material(obj, (0.07, 0.16, 0.38))
         top = [v.index for v in obj.data.vertices if v.co.z > 1.09]
         vg = obj.vertex_groups.new(name='ando_pins')
         vg.add(top, 1.0, 'ADD')
@@ -214,6 +251,16 @@ def main() -> None:
     t0 = time.time()
     result = bpy.ops.ando.bake_simulation()
     print(f'[render] bake={result} {time.time() - t0:.1f}s', flush=True)
+
+    bad = [k.name for k in obj.data.shape_keys.key_blocks
+           if any(not all(map(math.isfinite, v.co)) for v in k.data)]
+    if bad:
+        print(f'[render] ABORT: non-finite vertices in {len(bad)} key(s), '
+              f'first={bad[0]}. Shorten the bake or lower --dt.', flush=True)
+        return
+
+    frame_cloth(obj, lens=45)
+    sc.render.resolution_x, sc.render.resolution_y = a.res
 
     keys = [k for k in obj.data.shape_keys.key_blocks if k.name.startswith('frame_')]
     zs = [float(np.mean([v.co[2] for v in k.data])) for k in keys]
