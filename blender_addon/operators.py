@@ -228,7 +228,7 @@ def _collect_rigid_bodies(context, exclude_obj=None, reporter=None):
         rest_vertices = np.array([world_matrix @ v.co for v in mesh_eval.vertices], dtype=np.float64)
         vertices = rest_vertices.astype(np.float32)
         triangles = np.array(
-            [tuple(loop.vertex_index for loop in tri.loops) for tri in mesh_eval.loop_triangles],
+            [tuple(tri.vertices) for tri in mesh_eval.loop_triangles],
             dtype=np.int32,
         )
         obj_eval.to_mesh_clear()

@@ -46,6 +46,16 @@ public:
                                                      const std::vector<RigidBody>* rigid_bodies = nullptr,
                                                      Real detection_threshold = Real(0.01));
 
+    /**
+     * Apply velocity damping for one substep.
+     *
+     * ``damping_rate`` is a per-second rate, so the retained fraction is
+     * exp(-rate * dt) and the result does not depend on how the second is
+     * divided into substeps. Exposed for the regression test; ``step`` is the
+     * only caller in the solver.
+     */
+    static void apply_velocity_damping(State& state, Real damping_rate, Real dt);
+
 private:
     /**
      * Inner Newton step: solve for search direction and take line search step
@@ -133,7 +143,6 @@ private:
                                   const std::vector<RigidBody>* rigid_bodies,
                                   Real detection_threshold);
 
-    static void apply_velocity_damping(State& state, Real damping_factor);
     static void apply_contact_restitution(const Mesh& mesh,
                                           const Constraints& constraints,
                                           State& state,

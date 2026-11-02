@@ -136,7 +136,7 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
         }
 
         if (params.velocity_damping > 0.0) {
-            apply_velocity_damping(state, params.velocity_damping);
+            apply_velocity_damping(state, params.velocity_damping, dt);
         }
 
         if (params.contact_restitution > 0.0) {
@@ -556,9 +556,14 @@ void Integrator::detect_collisions(const Mesh& mesh, const State& state,
     }
 }
 
-void Integrator::apply_velocity_damping(State& state, Real damping_factor) {
-    Real clamped = std::clamp(damping_factor, Real(0.0), Real(1.0));
-    Real scale = Real(1.0) - clamped;
+void Integrator::apply_velocity_damping(State& state, Real damping_rate, Real dt) {
+    if (damping_rate <= Real(0.0) || dt <= Real(0.0)) {
+        return;
+    }
+    // A per-second rate, integrated exactly over the substep. Scaling by
+    // (1 - rate) each substep made the damping depend on the timestep: at a
+    // 1 ms step it removed ~100% of the velocity per second.
+    Real scale = std::exp(-damping_rate * dt);
     for (auto& v : state.velocities) {
         v *= scale;
     }
