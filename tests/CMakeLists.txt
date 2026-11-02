@@ -81,3 +81,34 @@ target_include_directories(test_hybrid PRIVATE
 )
 
 add_test(NAME HybridContactTest COMMAND test_hybrid)
+add_test(NAME RigidContactForceDirectionTest COMMAND test_hybrid --rigid-force-only)
+
+# Configure in a fresh directory and inspect the generated module target ABI.
+add_test(NAME CMakePythonABI
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cmake_python_abi.py)
+set_tests_properties(CMakePythonABI PROPERTIES
+    ENVIRONMENT "EIGEN3_INCLUDE_DIR=${EIGEN3_INCLUDE_DIR}")
+
+add_executable(test_collision_threshold
+    test_collision_threshold.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/collision.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
+)
+target_include_directories(test_collision_threshold PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${EIGEN3_INCLUDE_DIR}
+)
+add_test(NAME CollisionThresholdTest COMMAND test_collision_threshold)
+
+add_test(NAME RigidBarrierRangeForceTest COMMAND test_hybrid --barrier-range-force-only)
+
+foreach(kind triangles edges)
+    foreach(count 2 3 4 17)
+        add_test(NAME CollisionBVH_${kind}_${count}
+            COMMAND test_collision_threshold --tree ${kind} ${count})
+    endforeach()
+    add_test(NAME CollisionPipeline_${kind}
+        COMMAND test_collision_threshold --pipeline ${kind})
+endforeach()

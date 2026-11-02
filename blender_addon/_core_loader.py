@@ -12,6 +12,7 @@ if the core module cannot be found.
 from __future__ import annotations
 
 import importlib
+import importlib.machinery
 import importlib.util
 import logging
 import sys
@@ -53,29 +54,39 @@ def _iter_candidate_paths() -> Iterable[Path]:
 def _register_package_module(module: ModuleType) -> None:
     """Ensure the resolved module is available under the package namespace."""
 
-    sys.modules.setdefault(_PACKAGE_NAME, module)
+    sys.modules[_PACKAGE_NAME] = module
 
 
 def _load_module_from_path(path: Path, *, module_name: str = _PACKAGE_NAME) -> tuple[ModuleType | None, str | None]:
     """Load a module directly from the provided file system path."""
 
+    def failure(detail: str) -> tuple[None, str]:
+        if path.suffix.lower() in {".so", ".pyd", ".dll", ".dylib"}:
+            detail = (
+                f"{path}: {detail}. Running Python "
+                f"{sys.version_info.major}.{sys.version_info.minor}; native extensions "
+                "must target the same Python minor version, OS, and architecture. "
+                "Rebuild with Blender's bundled Python (docs/GETTING_STARTED.md)."
+            )
+        return None, detail
+
     try:
         spec = importlib.util.spec_from_file_location(module_name, path)
     except Exception as exc:  # pragma: no cover - defensive
-        return None, str(exc)
+        return failure(str(exc))
 
     if spec is None or spec.loader is None:
-        return None, "no loader available"
+        return failure("no loader available")
 
     try:
         module = importlib.util.module_from_spec(spec)
     except Exception as exc:  # pragma: no cover - defensive
-        return None, str(exc)
+        return failure(str(exc))
 
     try:
         spec.loader.exec_module(module)  # type: ignore[call-arg]
     except Exception as exc:  # pragma: no cover - defensive
-        return None, str(exc)
+        return failure(str(exc))
 
     return module, None
 
@@ -118,9 +129,13 @@ def _import_core() -> ModuleType:
         _CACHED_MODULE = module
         return module
 
-    # Try to re-use an installed wheel/egg without polluting sys.path.
+    # Reuse installed native extensions, but do not execute a repository Python
+    # shim before the bundled fallback (it can initialize the add-on recursively).
     spec = importlib.util.find_spec(_MODULE_NAME)
-    if spec and spec.origin:
+    if spec and spec.origin and any(
+        str(spec.origin).endswith(suffix)
+        for suffix in importlib.machinery.EXTENSION_SUFFIXES
+    ):
         module_path = Path(spec.origin)
         module, error = _load_module_from_path(module_path)
         if module is None:
@@ -258,7 +273,7 @@ def _handle_python_fallback() -> None:
     _FALLBACK_PROMPTED = True
 
     bpy = _try_import_bpy()
-    if bpy is None:
+    if bpy is None or getattr(bpy.app, "background", False):
         return
 
     def _prompt_user() -> Optional[float]:  # pragma: no cover - Blender UI interaction

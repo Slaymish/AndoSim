@@ -116,12 +116,14 @@ public:
     // Broad phase: find potential contact pairs using BVH
     static void broad_phase_triangles(const Mesh& mesh, const State& state,
                                      const std::vector<BVHNode>& bvh,
-                                     std::vector<ContactPair>& candidates);
+                                     std::vector<ContactPair>& candidates,
+                                     Real detection_threshold = Real(0.01));
     
     static void broad_phase_edges(const Mesh& mesh, const State& state,
                                  const std::vector<BVHNode>& tri_bvh,
                                  const std::vector<BVHNode>& edge_bvh,
-                                 std::vector<ContactPair>& candidates);
+                                 std::vector<ContactPair>& candidates,
+                                     Real detection_threshold = Real(0.01));
     
     // Narrow phase: compute exact distance and witness points
     static bool narrow_phase_point_triangle(const Vec3& p, 
@@ -138,15 +140,18 @@ public:
     static void detect_wall_collisions(const State& state,
                                       const Vec3& plane_normal,
                                       Real plane_offset,
-                                      std::vector<ContactPair>& contacts);
+                                      std::vector<ContactPair>& contacts,
+                                      Real detection_threshold = Real(0.01));
     
     // Full collision detection pipeline
     static void detect_all_collisions(const Mesh& mesh, const State& state,
-                                     std::vector<ContactPair>& contacts);
+                                     std::vector<ContactPair>& contacts,
+                                      Real detection_threshold = Real(0.01));
 
     static void detect_all_collisions(const Mesh& mesh, const State& state,
                                       const std::vector<RigidBody>& rigids,
-                                      std::vector<ContactPair>& contacts);
+                                      std::vector<ContactPair>& contacts,
+                                      Real detection_threshold = Real(0.01));
 
 private:
     // Helper: build BVH recursively

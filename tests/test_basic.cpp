@@ -36,6 +36,8 @@ void test_stiffness_contact_point_triangle() {
     contact.idx3 = 3;
     contact.normal = Vec3(0.0, 0.0, 1.0);
     contact.witness_q = Vec3(1.0 / 3.0, 1.0 / 3.0, 0.0);
+    contact.vertex_count = 4;
+    contact.weights = {Real(1), -Real(1) / 3, -Real(1) / 3, -Real(1) / 3};
     contact.gap = 0.001;
 
     const Real dt = 0.01;
@@ -57,11 +59,12 @@ void test_stiffness_contact_point_triangle() {
 
     Real k = Stiffness::compute_contact_stiffness(contact, state, dt, H);
 
-    Real mass_avg = (state.masses[0] + state.masses[1] + state.masses[2] + state.masses[3]) / Real(4.0);
+    // Project M/dt² + H along the signed contact direction Wn.
+    Real mass_projected = state.masses[0] +
+        (state.masses[1] + state.masses[2] + state.masses[3]) / Real(9);
     Real bary = Real(1.0 / 3.0);
     Real H_diag = Real(900.0) + bary * bary * Real(100.0 + 200.0 + 300.0);
-    Real Wn_norm = std::sqrt(Real(1.0) + Real(3.0) * bary * bary);
-    Real expected = mass_avg / (dt * dt) + Wn_norm * H_diag;
+    Real expected = mass_projected / (dt * dt) + H_diag;
 
     assert(std::abs(k - expected) < 1e-3 * expected);
     std::cout << "  ✓ Point-triangle contact stiffness passed" << std::endl;
@@ -99,6 +102,8 @@ void test_stiffness_contact_edge_edge() {
     contact.idx2 = 2;
     contact.idx3 = 3;
     contact.normal = Vec3(0.0, 1.0, 0.0);
+    contact.vertex_count = 4;
+    contact.weights = {Real(0.5), Real(0.5), Real(-0.5), Real(-0.5)};
     contact.gap = 0.001;
 
     const Real dt = 0.01;

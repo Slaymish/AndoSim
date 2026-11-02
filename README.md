@@ -14,7 +14,7 @@ AndoSim is a Blender add-on that ports the SIGGRAPH 2024 method from ["A Cubic B
 ### Try it
 - Artists and tech animators: follow [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). It walks through installing the add-on, linking the core module, and running your first cloth drop in the viewport.
 - Developers: prerequisites are CMake, Eigen3, and pybind11. From the project root run `./build.sh` (tests: `./build.sh -t`). This compiles the C++ extension into `blender_addon/` so Blender can import it.
-- Need binaries fast? CI artifacts target Blender releases that ship Python 3.11 (4.1–4.5). Older Blender versions require rebuilding with the bundled interpreter—notes are in the getting started guide.
+- Need binaries fast? CI artifacts target Python 3.11. Check Blender's actual Python major/minor version, OS, and architecture before using one; other Python versions require a matching rebuild. See the getting started guide.
 - Trying the CUDA backend? Make sure `extern/ppf-contact-solver` is pulled via `git submodule update --init --recursive`, then pick **PPF Contact Solver** in the add-on preferences. The realtime panel will guide you through launching a streaming session.
 
 ### Want to dig deeper?

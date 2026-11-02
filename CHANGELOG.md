@@ -5,6 +5,19 @@ All notable changes to the Ando Barrier Physics Simulator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Bundled Python fallback is now preferred over the repository compatibility shim, and manual core selection replaces a cached module instead of being ignored.
+- Background Blender no longer opens the manual core-selection dialog; native import failures explain the Python minor version, OS and architecture requirement.
+- CMake respects the requested Python interpreter (and its ABI suffix) even when a build directory holds legacy pybind11 values.
+- Rigid bodies receive the reaction to a cloth contact in the correct direction.
+- Collision detection honours the configured barrier range instead of an unconditional 10 mm cutoff.
+- BVH construction no longer drops primitives in 2 to 4-primitive ranges or writes child indices through a reference invalidated by recursion.
+
+### Documentation
+- Installation guidance states that prebuilt modules require a matching Python minor version, OS and architecture.
+
 ## [1.1.1] - 2025-10-25
 
 ### Changed
