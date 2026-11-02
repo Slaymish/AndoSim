@@ -99,6 +99,52 @@ int main() {
         std::cerr << "elastic energy did not decrease\n";
         return 1;
     }
+
+    // Pins must hold. The barrier form of a pin only acts within the barrier
+    // range, so a vertex that drifted further used to be released for good and
+    // the cloth fell off its pins.
+    Mesh pinned_mesh;
+    pinned_mesh.initialize(grid(nx, ny, 0.4, 1.0), grid_triangles(nx, ny), material);
+    State pinned_state;
+    pinned_state.initialize(pinned_mesh);
+    Constraints pins;
+    std::vector<Index> pinned_vertices;
+    for (size_t i = 0; i < pinned_state.positions.size(); ++i) {
+        const Vec3& p = pinned_state.positions[i];
+        if (std::abs(p[0]) > Real(0.19) && std::abs(p[1]) > Real(0.19)) {
+            pins.add_pin(static_cast<Index>(i), p);
+            pinned_vertices.push_back(static_cast<Index>(i));
+        }
+    }
+    if (pinned_vertices.empty()) {
+        std::cerr << "pin fixture built no pins\n";
+        return 1;
+    }
+    std::vector<Vec3> targets;
+    for (Index idx : pinned_vertices) {
+        targets.push_back(pinned_state.positions[idx]);
+    }
+
+    const Vec3 gravity(0.0, 0.0, -9.81);
+    for (int i = 0; i < 200; ++i) {
+        for (auto& velocity : pinned_state.velocities) {
+            velocity += gravity * params.dt;
+        }
+        Integrator::step(pinned_mesh, pinned_state, pins, params);
+    }
+    for (size_t k = 0; k < pinned_vertices.size(); ++k) {
+        Real drift = (pinned_state.positions[pinned_vertices[k]] - targets[k]).norm();
+        if (drift > Real(1e-6)) {
+            std::cerr << "pin drifted " << drift << " m\n";
+            return 1;
+        }
+    }
+    Real centre_z = pinned_state.positions[pinned_state.positions.size() / 2][2];
+    if (!(centre_z < Real(-0.01))) {
+        std::cerr << "unpinned centre did not fall below the pins: " << centre_z << "\n";
+        return 1;
+    }
+    std::cout << "Pins held; centre sagged to z=" << centre_z << std::endl;
     std::cout << "Elasticity checks passed\n";
     return 0;
 }

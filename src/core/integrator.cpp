@@ -147,6 +147,21 @@ void Integrator::step(Mesh& mesh, State& state, Constraints& constraints,
     if (rigid_bodies && !rigid_bodies->empty()) {
         apply_rigid_coupling(mesh, state, *rigid_bodies, constraints, params);
     }
+
+    // Pins are hard constraints. The barrier form only resists a drift smaller
+    // than the barrier range, so a vertex that drifts further than g_max was
+    // released for good and the cloth fell off its pins.
+    for (const auto& pin : constraints.pins) {
+        if (!pin.active) {
+            continue;
+        }
+        const Index idx = pin.vertex_idx;
+        if (idx < 0 || static_cast<size_t>(idx) >= state.positions.size()) {
+            continue;
+        }
+        state.positions[idx] = pin.target_position;
+        state.velocities[idx] = Vec3::Zero();
+    }
 }
 
 Real Integrator::inner_newton_step(
