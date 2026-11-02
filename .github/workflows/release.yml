@@ -43,8 +43,12 @@ jobs:
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
-        brew install cmake eigen pybind11
+        brew install cmake eigen
+        # Homebrew's Eigen is keg-only, so CMake's package config is not on the
+        # default prefix; point the build at the headers directly.
+        echo "EIGEN3_INCLUDE_DIR=$(brew --prefix eigen)/include/eigen3" >> "$GITHUB_ENV"
         pip install numpy
+        pip install "pybind11[global]"
         
     - name: Install dependencies (Windows)
       if: runner.os == 'Windows'

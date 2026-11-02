@@ -29,19 +29,26 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Find packages
-# Eigen3 with fallback for Windows manual install
+# Eigen3: accept a CMake package (Ubuntu, Homebrew, vcpkg), an env override,
+# or the Windows manual unzip. The include directory must end up set whatever
+# route found it, or the bindings fail on Eigen/Core.
 find_package(Eigen3 QUIET)
-if(NOT Eigen3_FOUND)
-    # Try to find Eigen in common locations
-    if(DEFINED ENV{EIGEN3_INCLUDE_DIR})
-        set(EIGEN3_INCLUDE_DIR $ENV{EIGEN3_INCLUDE_DIR})
-        message(STATUS "Using Eigen from EIGEN3_INCLUDE_DIR: ${EIGEN3_INCLUDE_DIR}")
-    elseif(EXISTS "C:/eigen-3.4.0")
-        set(EIGEN3_INCLUDE_DIR "C:/eigen-3.4.0")
-        message(STATUS "Using Eigen from C:/eigen-3.4.0")
-    else()
-        message(FATAL_ERROR "Eigen3 not found. Please install Eigen3 or set EIGEN3_INCLUDE_DIR environment variable.")
+if(Eigen3_FOUND AND NOT EIGEN3_INCLUDE_DIR)
+    get_target_property(_eigen_include_dirs Eigen3::Eigen INTERFACE_INCLUDE_DIRECTORIES)
+    if(_eigen_include_dirs)
+        list(GET _eigen_include_dirs 0 EIGEN3_INCLUDE_DIR)
     endif()
+endif()
+if(NOT EIGEN3_INCLUDE_DIR AND DEFINED ENV{EIGEN3_INCLUDE_DIR})
+    set(EIGEN3_INCLUDE_DIR $ENV{EIGEN3_INCLUDE_DIR})
+    message(STATUS "Using Eigen from EIGEN3_INCLUDE_DIR: ${EIGEN3_INCLUDE_DIR}")
+endif()
+if(NOT EIGEN3_INCLUDE_DIR AND EXISTS "C:/eigen-3.4.0")
+    set(EIGEN3_INCLUDE_DIR "C:/eigen-3.4.0")
+    message(STATUS "Using Eigen from C:/eigen-3.4.0")
+endif()
+if(NOT EIGEN3_INCLUDE_DIR)
+    message(FATAL_ERROR "Eigen3 not found. Install Eigen3, or set EIGEN3_INCLUDE_DIR to the directory containing Eigen/Core.")
 endif()
 # Select Python before pybind11 so its module suffix and headers use the
 # explicitly requested interpreter rather than legacy FindPythonInterp.
