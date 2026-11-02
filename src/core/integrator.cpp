@@ -216,7 +216,7 @@ Real Integrator::inner_newton_step(
         Real alpha = LineSearch::search(
             mesh, state, direction, contacts,
             pins_for_search, wall_normal, wall_offset,
-            1.25
+            1.0
         );
         
         if (alpha < 1e-8) {
@@ -224,7 +224,7 @@ Real Integrator::inner_newton_step(
         }
         
         // Update positions: x ← x + α * extension * d
-        VecX x_new = x_current + alpha * 1.25 * direction;
+        VecX x_new = x_current + alpha * direction;
         state.unflatten_positions(x_new);
         
         if (alpha > 0.99) {
@@ -542,6 +542,7 @@ void Integrator::assemble_system_matrix(
     // Enforce symmetry
     SparseMatrix hessian_t = hessian.transpose();
     hessian = (hessian + hessian_t) * 0.5;
+
 }
 
 void Integrator::detect_collisions(const Mesh& mesh, const State& state,

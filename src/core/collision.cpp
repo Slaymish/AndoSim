@@ -44,6 +44,43 @@ static Vec3 compute_triangle_barycentric(const Vec3& p, const Vec3& a,
 
 } // namespace
 
+namespace {
+
+// Surface neighbours in a flat rest pose are at zero distance and would sit at
+// the singularity of the barrier for ever. Only proximity that is new since the
+// rest pose counts as a self collision.
+bool rest_gap_exceeds(const Mesh& mesh, const ContactPair& pair, Real /*threshold*/) {
+    if (mesh.vertices.size() <= static_cast<size_t>(std::max({pair.idx0, pair.idx1, pair.idx2, pair.idx3}))) {
+        return true;
+    }
+    Real rest_gap = 0.0;
+    Vec3 normal, wp, wq;
+    if (pair.type == ContactType::POINT_TRIANGLE) {
+        if (!Collision::narrow_phase_point_triangle(mesh.vertices[pair.idx0],
+                                                    mesh.vertices[pair.idx1],
+                                                    mesh.vertices[pair.idx2],
+                                                    mesh.vertices[pair.idx3],
+                                                    rest_gap, normal, wp, wq)) {
+            return true;
+        }
+    } else if (pair.type == ContactType::EDGE_EDGE) {
+        if (!Collision::narrow_phase_edge_edge(mesh.vertices[pair.idx0],
+                                               mesh.vertices[pair.idx1],
+                                               mesh.vertices[pair.idx2],
+                                               mesh.vertices[pair.idx3],
+                                               rest_gap, normal, wp, wq)) {
+            return true;
+        }
+    } else {
+        return true;
+    }
+    // Only a pair that was already touching in the rest pose is excluded; a
+    // contact that merely exists at rest but with a real gap is still physical.
+    return std::abs(rest_gap) > Real(1e-5);
+}
+
+} // namespace
+
 // Build AABB for triangle
 static AABB compute_triangle_aabb(const Vec3& a, const Vec3& b, const Vec3& c) {
     AABB box;
@@ -511,7 +548,8 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
 
             if (narrow_phase_point_triangle(p, a, b, c, pair.gap, pair.normal,
                                            pair.witness_p, pair.witness_q)) {
-                if (pair.gap < detection_threshold) {  // Within collision threshold
+                if (pair.gap < detection_threshold &&
+                    rest_gap_exceeds(mesh, pair, detection_threshold)) {
                     Vec3 bary = compute_triangle_barycentric(pair.witness_q, a, b, c);
                     pair.barycentric = bary;
                     pair.weights[0] = static_cast<Real>(1.0);
@@ -530,7 +568,8 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
 
             if (narrow_phase_edge_edge(p0, p1, q0, q1, pair.gap, pair.normal,
                                       pair.witness_p, pair.witness_q)) {
-                if (pair.gap < detection_threshold) {  // Within collision threshold
+                if (pair.gap < detection_threshold &&
+                    rest_gap_exceeds(mesh, pair, detection_threshold)) {
                     pair.vertex_count = 4;
                     pair.weights[0] = static_cast<Real>(0.5);
                     pair.weights[1] = static_cast<Real>(0.5);

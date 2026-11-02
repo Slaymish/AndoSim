@@ -123,11 +123,14 @@ void Mesh::set_positions(const std::vector<Vec3>& new_positions) {
     vertices = new_positions;
 }
 
-Mat2 Mesh::compute_F(Index face_idx) const {
+Mat2 Mesh::compute_F(Index face_idx, const std::vector<Vec3>& positions) const {
     const Triangle& tri = triangles[face_idx];
-    const Vec3& v0 = vertices[tri.v[0]];
-    const Vec3& v1 = vertices[tri.v[1]];
-    const Vec3& v2 = vertices[tri.v[2]];
+    // Deformation gradient of the current pose (``positions``) measured against
+    // the rest pose cached in this mesh. Passing the rest vertices here would
+    // make F the identity for every pose and silently disable elasticity.
+    const Vec3& v0 = positions[tri.v[0]];
+    const Vec3& v1 = positions[tri.v[1]];
+    const Vec3& v2 = positions[tri.v[2]];
     
     // Edge vectors (deformed)
     Vec3 e1 = v1 - v0;

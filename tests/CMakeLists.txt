@@ -127,6 +127,29 @@ target_include_directories(test_damping PRIVATE
 )
 add_test(NAME VelocityDampingTest COMMAND test_damping)
 
+add_executable(test_elasticity
+    test_elasticity.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/integrator.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/state.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/constraints.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/elasticity.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/stiffness.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/strain_limiting.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/collision.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/line_search.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/pcg_solver.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/friction.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/barrier.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/matrix_assembly.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/rigid_body.cpp
+)
+target_include_directories(test_elasticity PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${EIGEN3_INCLUDE_DIR}
+)
+add_test(NAME ElasticityTest COMMAND test_elasticity)
+
 foreach(kind triangles edges)
     foreach(count 2 3 4 17)
         add_test(NAME CollisionBVH_${kind}_${count}
