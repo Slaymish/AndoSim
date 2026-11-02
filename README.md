@@ -32,7 +32,7 @@ blender -b --factory-startup --python docs/example_images/render_demo.py -- \
     --scene drape --frames 30 --out /tmp/drape --dt 1 --gap 0.004
 ```
 
-`--scene` also accepts `wave` (a corrugated sheet pinned at two corners) and `swing` (a curtain pinned along one edge). The bake writes the shape keys and the script renders each frame with Cycles, so any change to the solver can be re-shot the same way.
+`--scene` also accepts `wave` (a corrugated sheet pinned at two corners) and `swing` (a curtain pinned along one edge). Both currently diverge once the folds start colliding with each other, which is the contact work described above; the script refuses to render a bake that has gone non-finite. The bake writes the shape keys and the script renders each frame with Cycles, so any change to the solver can be re-shot the same way.
 
 ### Want to dig deeper?
 
