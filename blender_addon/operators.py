@@ -454,6 +454,24 @@ class ANDO_OT_bake_simulation(Operator):
         start_frame = props.cache_start
         end_frame = props.cache_end
         steps_per_frame = max(1, int(1.0 / (props.dt / 1000.0) / 24.0))  # Aim for 24 fps
+
+        # Contact needs the barrier to be sampled: a vertex that travels further
+        # than the barrier range in one substep is never seen inside it and
+        # passes straight through. Cap the substep so motion stays well inside
+        # the range, using the current speed to decide.
+        frame_seconds = 1.0 / 24.0
+        substep_limit = 2000
+        base_dt = params.dt
+
+        def substep_plan():
+            velocities = np.asarray(state.get_velocities(), dtype=np.float64)
+            speed = float(np.max(np.linalg.norm(velocities, axis=1))) if velocities.size else 0.0
+            gap = max(float(props.contact_gap_max), 1e-6)
+            safe_dt = 0.25 * gap / max(speed, 1e-6)
+            dt_eff = min(base_dt, safe_dt)
+            count = max(steps_per_frame, int(round(frame_seconds / dt_eff)))
+            count = min(count, substep_limit)
+            return max(1, count), frame_seconds / max(count, 1)
         
         # Create shape keys for animation
         if not obj.data.shape_keys:
@@ -493,10 +511,12 @@ class ANDO_OT_bake_simulation(Operator):
                 shape_key = obj.shape_key_add(name=f'frame_{frame:04d}', from_mix=False)
                 
                 # Simulate steps for this frame
-                for step in range(steps_per_frame):
+                substeps, dt_eff = substep_plan()
+                params.dt = dt_eff
+                for step in range(substeps):
                     # Apply gravity acceleration
                     state.apply_gravity(gravity, params.dt)
-                    
+
                     # Take physics step
                     if rigid_bodies:
                         abc.Integrator.step(mesh, state, constraints, params, rigid_bodies)
