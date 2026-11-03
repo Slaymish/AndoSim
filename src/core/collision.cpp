@@ -626,6 +626,61 @@ void Collision::detect_all_collisions(const Mesh& mesh, const State& state,
                 }
             }
         }
+
+        // Rigid edge/cloth edge support completes the triangle feature pairs.
+        for (const auto& edge : mesh.edges) {
+            const Vec3& p0=state.positions[edge.v[0]];
+            const Vec3& p1=state.positions[edge.v[1]];
+            AABB box=compute_edge_aabb(p0,p1);
+            box.min.array()-=detection_threshold; box.max.array()+=detection_threshold;
+            for (const auto& rigid_edge : body.edges()) {
+                const Vec3& q0=rigid_vertices[rigid_edge.v[0]];
+                const Vec3& q1=rigid_vertices[rigid_edge.v[1]];
+                if (!box.overlaps(compute_edge_aabb(q0,q1))) continue;
+                ContactPair pair;
+                narrow_phase_edge_edge(p0,p1,q0,q1,pair.gap,pair.normal,pair.witness_p,pair.witness_q);
+                if (pair.gap >= detection_threshold) continue;
+                Real length2=(p1-p0).squaredNorm();
+                Real rigid_length2=(q1-q0).squaredNorm();
+                if (length2 <= Real(1e-12) || rigid_length2 <= Real(1e-12)) continue;
+                Real t=(pair.witness_p-p0).dot(p1-p0)/length2;
+                Real u=(pair.witness_q-q0).dot(q1-q0)/rigid_length2;
+                // Endpoint minima are already covered by vertex/face pairs.
+                // Counting them again adds artificial lateral forces on a plate.
+                if (t <= Real(1e-5) || t >= Real(1)-Real(1e-5) ||
+                    u <= Real(1e-5) || u >= Real(1)-Real(1e-5)) continue;
+                pair.type=ContactType::RIGID_POINT_TRIANGLE;
+                pair.rigid_body_index=static_cast<int>(rb);
+                pair.idx0=edge.v[0]; pair.idx1=edge.v[1]; pair.vertex_count=2;
+                pair.weights[0]=1-t; pair.weights[1]=t;
+                contacts.push_back(pair);
+            }
+        }
+
+        // The reverse vertex/face direction matters for coarse cloth: a rigid
+        // sphere can pierce a cloth face while every cloth vertex is outside.
+        // RIGID_POINT_TRIANGLE stores the deformable support first; its weights
+        // may span a cloth triangle rather than a single cloth vertex.
+        for (const auto& q : rigid_vertices) {
+            for (const auto& tri : mesh.triangles) {
+                const Vec3& a = state.positions[tri.v[0]];
+                const Vec3& b = state.positions[tri.v[1]];
+                const Vec3& c = state.positions[tri.v[2]];
+                ContactPair pair;
+                Vec3 wp, wq;
+                narrow_phase_point_triangle(q,a,b,c,pair.gap,pair.normal,wp,wq);
+                if (pair.gap >= detection_threshold) continue;
+                pair.type = ContactType::RIGID_POINT_TRIANGLE;
+                pair.rigid_body_index = static_cast<int>(rb);
+                pair.idx0=tri.v[0]; pair.idx1=tri.v[1]; pair.idx2=tri.v[2];
+                pair.normal = -pair.normal;
+                pair.witness_p = wq; pair.witness_q = q;
+                pair.barycentric = compute_triangle_barycentric(wq,a,b,c);
+                pair.vertex_count = 3;
+                for (int j=0;j<3;++j) pair.weights[j]=pair.barycentric[j];
+                contacts.push_back(pair);
+            }
+        }
     }
 }
 

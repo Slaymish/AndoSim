@@ -76,9 +76,9 @@ void Elasticity::compute_hessian(const Mesh& mesh, const State& state,
                 Index ia = tri.v[a];
                 Index ib = tri.v[b];
                 
-                // Enforce SPD using shared utility from Stiffness
-                Mat3 H_spd = H[a][b];
-                Stiffness::enforce_spd(H_spd);
+                // The complete element is PSD. Projecting off-diagonal blocks
+                // independently destroys its translation nullspace.
+                const Mat3& H_spd = H[a][b];
                 
                 // Add 3×3 block
                 for (int k = 0; k < 3; ++k) {
@@ -135,50 +135,19 @@ void Elasticity::face_gradient(const Mat2& F, const Material& mat, Real area,
 
 void Elasticity::face_hessian(const Mat2& F, const Material& mat, Real area,
                               const Mat2& Dm_inv, Mat3 H[3][3]) {
-    // Constant Hessian approximation for ARAP
-    // Full Hessian would include second derivatives of F
-    
+    // Rotation-invariant PSD membrane approximation: edge gradients form a
+    // Gram matrix. Preserve negative off-diagonal blocks and zero row sums.
+    // This is a solver approximation, not the exact derivative of the moving
+    // material frame used by compute_gradient.
     Real mu = mat.youngs_modulus / (2.0 * (1.0 + mat.poisson_ratio));
     Real k = area * mat.thickness * mu;
-    
-    // Constant Hessian: H_ij = k * (Dm_inv^T * Dm_inv)
-    Mat2 K = k * (Dm_inv.transpose() * Dm_inv);
-    
-    // Map 2D stiffness to 3D blocks (maintains SPD property)
-    
-    // Diagonal blocks (vertices i,i)
-    for (int i = 0; i < 3; ++i) {
-        H[i][i] = Mat3::Zero();
-        if (i == 0) {
-            // v0 gets contribution from both edges
-            H[0][0](0, 0) = K(0, 0) + K(1, 1) + 2.0 * K(0, 1);
-            H[0][0](1, 1) = H[0][0](0, 0);
-        } else if (i == 1) {
-            // v1 from edge 0
-            H[1][1](0, 0) = K(0, 0);
-            H[1][1](1, 1) = K(0, 0);
-        } else {
-            // v2 from edge 1
-            H[2][2](0, 0) = K(1, 1);
-            H[2][2](1, 1) = K(1, 1);
-        }
-    }
-    
-    // Off-diagonal blocks
-    H[0][1] = Mat3::Zero();
-    H[0][1](0, 0) = -K(0, 0);
-    H[0][1](1, 1) = -K(0, 0);
-    H[1][0] = H[0][1].transpose();
-    
-    H[0][2] = Mat3::Zero();
-    H[0][2](0, 0) = -K(1, 1);
-    H[0][2](1, 1) = -K(1, 1);
-    H[2][0] = H[0][2].transpose();
-    
-    H[1][2] = Mat3::Zero();
-    H[1][2](0, 0) = -K(0, 1);
-    H[1][2](1, 1) = -K(0, 1);
-    H[2][1] = H[1][2].transpose();
+    Mat2 K = Real(2) * k * (Dm_inv * Dm_inv.transpose());
+    H[1][1] = K(0,0) * Mat3::Identity();
+    H[2][2] = K(1,1) * Mat3::Identity();
+    H[1][2] = H[2][1] = K(0,1) * Mat3::Identity();
+    H[0][1] = H[1][0] = -H[1][1] - H[1][2];
+    H[0][2] = H[2][0] = -H[2][2] - H[1][2];
+    H[0][0] = -H[0][1] - H[0][2];
 }
 
 } // namespace ando_barrier

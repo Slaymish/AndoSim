@@ -42,7 +42,8 @@ public:
                       const Vec3& wall_normal = Vec3(0, 0, 1),
                       Real wall_offset = 0.0,
                       Real extension = 1.25,
-                      Real min_alpha = 1e-6);
+                      Real min_alpha = 1e-6,
+                      const std::vector<RigidBody>* rigid_bodies = nullptr);
 
 private:
     /**

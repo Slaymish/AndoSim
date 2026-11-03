@@ -31,7 +31,7 @@ bool PCGSolver::solve(const SparseMatrix& A, const VecX& b, VecX& x,
     VecX p = z;
     
     // rz = r^T z
-    Real rz_old = r.dot(z);
+    HostScalar rz_old = r.cast<HostScalar>().dot(z.cast<HostScalar>());
     
     // PCG iteration
     for (int iter = 0; iter < max_iters; ++iter) {
@@ -39,12 +39,12 @@ bool PCGSolver::solve(const SparseMatrix& A, const VecX& b, VecX& x,
         VecX Ap = A * p;
         
         // alpha = (r^T z) / (p^T A p)
-        Real pAp = p.dot(Ap);
-        if (std::abs(pAp) < 1e-16) {
-            std::cerr << "PCG: pAp near zero, matrix may not be SPD" << std::endl;
+        HostScalar pAp = p.cast<HostScalar>().dot(Ap.cast<HostScalar>());
+        if (!std::isfinite(pAp) || pAp <= 0 || !std::isfinite(rz_old) || rz_old <= 0) {
+            std::cerr << "PCG: nonpositive or nonfinite curvature/preconditioned residual" << std::endl;
             return false;
         }
-        Real alpha = rz_old / pAp;
+        Real alpha = static_cast<Real>(rz_old / pAp);
         
         // Update solution: x = x + alpha * p
         x += alpha * p;
@@ -62,8 +62,8 @@ bool PCGSolver::solve(const SparseMatrix& A, const VecX& b, VecX& x,
         apply_preconditioner(precond, r, z);
         
         // beta = (r_new^T z_new) / (r_old^T z_old)
-        Real rz_new = r.dot(z);
-        Real beta = rz_new / rz_old;
+        HostScalar rz_new = r.cast<HostScalar>().dot(z.cast<HostScalar>());
+        Real beta = static_cast<Real>(rz_new / rz_old);
         rz_old = rz_new;
         
         // Update search direction: p = z + beta * p

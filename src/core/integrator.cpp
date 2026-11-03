@@ -14,6 +14,23 @@ namespace ando_barrier {
 
 namespace {
 
+// Rigid contacts interpolate a deformable witness. Preserve the existing
+// single-vertex friction convention for other contact types.
+int friction_support_count(const ContactPair& contact) {
+    return contact.type == ContactType::RIGID_POINT_TRIANGLE
+        ? std::clamp(contact.vertex_count, 1, 4) : 1;
+}
+
+Index support_index(const ContactPair& contact, int i) {
+    const Index indices[] = {contact.idx0, contact.idx1, contact.idx2, contact.idx3};
+    return indices[i];
+}
+
+Real support_weight(const ContactPair& contact, int i) {
+    return contact.type == ContactType::RIGID_POINT_TRIANGLE && contact.vertex_count > 0
+        ? contact.weights[i] : Real(1);
+}
+
 // Helper struct to hold friction computation results for a single contact
 struct FrictionData {
     Vec3 tangential;
@@ -34,11 +51,13 @@ bool compute_friction_data(
     const SimParams& params,
     FrictionData& out
 ) {
-    // Extract tangential motion
-    out.tangential = FrictionModel::extract_tangential(
-        state.positions[contact.idx0] - state.positions_prev[contact.idx0],
-        contact.normal
-    );
+    Vec3 displacement = Vec3::Zero();
+    for (int i = 0; i < friction_support_count(contact); ++i) {
+        Index idx = support_index(contact, i);
+        displacement += support_weight(contact, i) *
+            (state.positions[idx] - state.positions_prev[idx]);
+    }
+    out.tangential = FrictionModel::extract_tangential(displacement, contact.normal);
     
     out.tangential_norm = out.tangential.norm();
     if (!FrictionModel::should_apply_friction(out.tangential,
@@ -188,6 +207,7 @@ Real Integrator::inner_newton_step(
     }
 
     for (int newton_iter = 0; newton_iter < max_newton_iters; ++newton_iter) {
+        detect_collisions(mesh, state, contacts, rigid_bodies, params.contact_gap_max);
         // Compute gradient: g = ∇E
         VecX gradient = VecX::Zero(3 * n);
         compute_gradient(mesh, state, x_target, contacts, constraints, params, beta, gradient, rigid_bodies);
@@ -237,7 +257,7 @@ Real Integrator::inner_newton_step(
         Real alpha = LineSearch::search(
             mesh, state, direction, contacts,
             pins_for_search, wall_normal, wall_offset,
-            1.0
+            1.0, 1e-6, rigid_bodies
         );
         
         if (alpha < 1e-8) {
@@ -400,19 +420,11 @@ void Integrator::compute_gradient(
                 continue;  // Skip stationary contacts
             }
             
-            // Compute friction gradient (restoring force opposing tangential motion)
-            Vec3 friction_grad = FrictionModel::compute_gradient(
-                state.positions[contact.idx0],
-                state.positions_prev[contact.idx0],
-                contact.normal,
-                fric.k_friction
-            );
-            
-            // Add to gradient vector
-            int idx = static_cast<int>(contact.idx0);
-            gradient[3*idx + 0] += friction_grad[0];
-            gradient[3*idx + 1] += friction_grad[1];
-            gradient[3*idx + 2] += friction_grad[2];
+            const Vec3 friction_grad = fric.k_friction * fric.tangential;
+            for (int i = 0; i < friction_support_count(contact); ++i) {
+                gradient.segment<3>(3 * support_index(contact, i)) +=
+                    support_weight(contact, i) * friction_grad;
+            }
         }
     }
 }
@@ -541,16 +553,23 @@ void Integrator::assemble_system_matrix(
                 continue;  // Skip stationary contacts
             }
             
-            // Compute friction Hessian (3×3 block for vertex)
+            // Compute the friction Hessian in witness coordinates.
             Mat3 friction_hess = FrictionModel::compute_hessian(contact.normal, fric.k_friction);
             
-            // Add to triplets (diagonal block only, since friction is per-vertex)
-            int idx = static_cast<int>(contact.idx0);
-            for (int i = 0; i < 3; ++i) {
-                for (int j = 0; j < 3; ++j) {
-                    Real val = friction_hess(i, j);
-                    if (std::abs(val) > 1e-12) {
-                        triplets.push_back(Triplet(3*idx + i, 3*idx + j, val));
+            // Chain rule: each witness block is w_a w_b H, including
+            // off-diagonal blocks coupling different support vertices.
+            for (int a = 0; a < friction_support_count(contact); ++a) {
+                for (int b = 0; b < friction_support_count(contact); ++b) {
+                    const Mat3 block = support_weight(contact, a) *
+                        support_weight(contact, b) * friction_hess;
+                    for (int i = 0; i < 3; ++i) {
+                        for (int j = 0; j < 3; ++j) {
+                            if (std::abs(block(i, j)) > 1e-12) {
+                                triplets.emplace_back(3 * support_index(contact, a) + i,
+                                                      3 * support_index(contact, b) + j,
+                                                      block(i, j));
+                            }
+                        }
                     }
                 }
             }
@@ -650,14 +669,24 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
             }
             normal /= norm;
 
-            Index vidx = contact.idx0;
-            if (vidx < 0 || static_cast<size_t>(vidx) >= state.velocities.size()) {
-                continue;
-            }
-
             RigidBody& body = (*rigid_bodies)[contact.rigid_body_index];
+            Vec3 vertex_velocity = Vec3::Zero();
+            Real inv_mass = Real(0);
+            bool valid = true;
+            for (int i = 0; i < friction_support_count(contact); ++i) {
+                Index idx = support_index(contact, i);
+                if (idx < 0 || static_cast<size_t>(idx) >= state.velocities.size()) {
+                    valid = false;
+                    break;
+                }
+                Real w = support_weight(contact, i);
+                vertex_velocity += w * state.velocities[idx];
+                if (state.masses[idx] > Real(0)) {
+                    inv_mass += w * w / state.masses[idx];
+                }
+            }
+            if (!valid) continue;
 
-            Vec3 vertex_velocity = state.velocities[vidx];
             Vec3 body_velocity = body.velocity_at_point(contact.witness_q);
             Vec3 relative = vertex_velocity - body_velocity;
             Real vn = relative.dot(normal);
@@ -665,11 +694,11 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
                 continue;
             }
 
-            Real inv_mass = state.masses[vidx] > Real(0.0) ? Real(1.0) / state.masses[vidx] : Real(0.0);
             Vec3 r = contact.witness_q - body.position();
             Vec3 cross = r.cross(normal);
             Real angular_term = cross.dot(body.inertia_world_inv() * cross);
-            Real denom = inv_mass + angular_term;
+            Real body_inv_mass = body.mass() > Real(0) ? Real(1) / body.mass() : Real(0);
+            Real denom = inv_mass + body_inv_mass + angular_term;
             if (denom <= Real(0.0)) {
                 continue;
             }
@@ -677,8 +706,12 @@ void Integrator::apply_contact_restitution(const Mesh& mesh,
             Real j = -(Real(1.0) + restitution) * vn / denom;
             Vec3 impulse = j * normal;
 
-            vertex_velocity += impulse * inv_mass;
-            state.velocities[vidx] = vertex_velocity;
+            for (int i = 0; i < friction_support_count(contact); ++i) {
+                Index idx = support_index(contact, i);
+                if (state.masses[idx] > Real(0)) {
+                    state.velocities[idx] += support_weight(contact, i) * impulse / state.masses[idx];
+                }
+            }
             body.apply_impulse(contact.witness_q, -impulse);
         }
     }

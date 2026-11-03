@@ -1,4 +1,5 @@
 #include "line_search.h"
+#include "rigid_body.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -13,7 +14,8 @@ Real LineSearch::search(const Mesh& mesh,
                        const Vec3& wall_normal,
                        Real wall_offset,
                        Real extension,
-                       Real min_alpha) {
+                       Real min_alpha,
+                       const std::vector<RigidBody>* rigid_bodies) {
     
     // Start with full extended step
     Real alpha = 1.0;
@@ -27,6 +29,106 @@ Real LineSearch::search(const Mesh& mesh,
     VecX x;
     state.flatten_positions(x);
     
+    // Rigid geometry is frozen during this deformable solve. Check ALL swept
+    // vertex/triangle pairs, including those outside the current barrier range.
+    // Distance to a fixed triangle is 1-Lipschitz: advancing by less than
+    // (distance - clearance) / speed cannot cross its surface. Unlike temporal
+    // sampling, this also catches crossings between sample times and grazing.
+    if (rigid_bodies) {
+        const Real clearance = Real(1e-5);
+        for (const auto& body : *rigid_bodies) {
+            const auto vertices = body.world_vertices();
+            for (size_t i = 0; i < state.positions.size(); ++i) {
+                const Vec3 start = state.positions[i];
+                const Vec3 delta = extended_direction.segment<3>(3*i);
+                const Real speed = delta.norm();
+                if (speed <= Real(1e-12)) continue;
+                AABB swept;
+                swept.expand(start); swept.expand(start + alpha * delta);
+                swept.min.array() -= clearance;
+                swept.max.array() += clearance;
+                for (const auto& tri : body.triangles()) {
+                    const Vec3& a = vertices[tri.v[0]];
+                    const Vec3& b = vertices[tri.v[1]];
+                    const Vec3& c = vertices[tri.v[2]];
+                    AABB box; box.expand(a); box.expand(b); box.expand(c);
+                    if (!swept.overlaps(box)) continue;
+                    Real t = 0;
+                    bool safe = false;
+                    for (int iter = 0; iter < 64; ++iter) {
+                        Real distance;
+                        Vec3 normal, wp, wq;
+                        Collision::narrow_phase_point_triangle(start + t * delta,
+                            a, b, c, distance, normal, wp, wq);
+                        Real advance = Real(.9) * (distance - clearance) / speed;
+                        if (advance >= alpha - t) { safe = true; break; }
+                        if (advance <= Real(1e-7)) break;
+                        t += advance;
+                    }
+                    if (!safe) alpha = std::min(alpha, t);
+                }
+            }
+            // Edge/edge events can cross without any vertex passing through a
+            // face. Bound distance change by the faster cloth endpoint speed.
+            for (const auto& edge : mesh.edges) {
+                const Vec3 p0=state.positions[edge.v[0]], p1=state.positions[edge.v[1]];
+                const Vec3 d0=extended_direction.segment<3>(3*edge.v[0]);
+                const Vec3 d1=extended_direction.segment<3>(3*edge.v[1]);
+                const Real speed=std::max(d0.norm(),d1.norm());
+                if (speed <= Real(1e-12)) continue;
+                AABB swept;
+                swept.expand(p0); swept.expand(p1);
+                swept.expand(p0+alpha*d0); swept.expand(p1+alpha*d1);
+                swept.min.array()-=clearance; swept.max.array()+=clearance;
+                for (const auto& rigid_edge : body.edges()) {
+                    const Vec3& q0=vertices[rigid_edge.v[0]];
+                    const Vec3& q1=vertices[rigid_edge.v[1]];
+                    AABB box; box.expand(q0); box.expand(q1);
+                    if (!swept.overlaps(box)) continue;
+                    Real t=0;
+                    bool safe=false;
+                    for (int iter=0;iter<64;++iter) {
+                        Real distance; Vec3 normal,wp,wq;
+                        Collision::narrow_phase_edge_edge(p0+t*d0,p1+t*d1,q0,q1,distance,normal,wp,wq);
+                        Real advance=Real(.9)*(distance-clearance)/speed;
+                        if (advance >= alpha-t) { safe=true; break; }
+                        if (advance <= Real(1e-7)) break;
+                        t+=advance;
+                    }
+                    if (!safe) alpha=std::min(alpha,t);
+                }
+            }
+            // Reverse CCD: fixed rigid vertices against swept cloth faces.
+            for (const auto& tri : mesh.triangles) {
+                const Vec3 a=state.positions[tri.v[0]], b=state.positions[tri.v[1]], c=state.positions[tri.v[2]];
+                const Vec3 da=extended_direction.segment<3>(3*tri.v[0]);
+                const Vec3 db=extended_direction.segment<3>(3*tri.v[1]);
+                const Vec3 dc=extended_direction.segment<3>(3*tri.v[2]);
+                const Real speed=std::max({da.norm(),db.norm(),dc.norm()});
+                if (speed <= Real(1e-12)) continue;
+                AABB swept;
+                swept.expand(a); swept.expand(b); swept.expand(c);
+                swept.expand(a+alpha*da); swept.expand(b+alpha*db); swept.expand(c+alpha*dc);
+                swept.min.array()-=clearance; swept.max.array()+=clearance;
+                for (const auto& q : vertices) {
+                    if ((q.array()<swept.min.array()).any() || (q.array()>swept.max.array()).any()) continue;
+                    Real t=0;
+                    bool safe=false;
+                    for (int iter=0;iter<64;++iter) {
+                        Real distance; Vec3 normal,wp,wq;
+                        Collision::narrow_phase_point_triangle(q,a+t*da,b+t*db,c+t*dc,distance,normal,wp,wq);
+                        Real advance=Real(.9)*(distance-clearance)/speed;
+                        if (advance >= alpha-t) { safe=true; break; }
+                        if (advance <= Real(1e-7)) break;
+                        t+=advance;
+                    }
+                    if (!safe) alpha=std::min(alpha,t);
+                }
+            }
+        }
+        if (alpha < min_alpha) return 0;
+    }
+
     // Try progressively smaller step lengths
     for (int iter = 0; iter < max_iterations; ++iter) {
         // Proposed new positions: x_new = x + α * extension * d
@@ -46,7 +148,7 @@ Real LineSearch::search(const Mesh& mesh,
         }
     }
     
-    return alpha;  // Return best attempt
+    return 0.0;  // Never accept an unchecked/infeasible last attempt
 }
 
 bool LineSearch::is_feasible(const State& state,
