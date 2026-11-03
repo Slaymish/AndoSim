@@ -27,6 +27,8 @@ public:
     const std::vector<Vec3>& local_vertices() const { return m_vertices_local; }
     const std::vector<Triangle>& triangles() const { return m_triangles; }
 
+    const std::vector<Edge>& edges() const { return m_edges; }
+
     Real mass() const { return m_mass; }
     const Mat3& inertia_body() const { return m_inertia_body; }
 
@@ -71,6 +73,7 @@ private:
 
     std::vector<Vec3> m_vertices_local;
     std::vector<Triangle> m_triangles;
+    std::vector<Edge> m_edges;
 
     Real m_mass;
     Mat3 m_inertia_body;

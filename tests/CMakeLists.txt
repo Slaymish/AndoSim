@@ -158,3 +158,23 @@ foreach(kind triangles edges)
     add_test(NAME CollisionPipeline_${kind}
         COMMAND test_collision_threshold --pipeline ${kind})
 endforeach()
+
+add_test(NAME RigidSphereCrossingTest COMMAND test_hybrid --sphere-crossing)
+
+add_test(NAME ElasticHessianPSDTest COMMAND test_elasticity --hessian)
+add_test(NAME PCGSmallSPDTest COMMAND test_elasticity --pcg-scale)
+
+add_test(NAME RigidSphereHoldingTest COMMAND test_hybrid --sphere-hold)
+
+add_test(NAME RigidSphereFaceCrossingTest COMMAND test_hybrid --sphere-face)
+
+add_test(NAME RigidEdgeCrossingTest COMMAND test_hybrid --rigid-edge)
+
+# Exercise weighted rigid witnesses through the production integrator.
+get_target_property(weighted_contact_sources test_hybrid SOURCES)
+list(REMOVE_ITEM weighted_contact_sources test_hybrid.cpp)
+add_executable(test_weighted_contact test_weighted_contact.cpp ${weighted_contact_sources})
+target_include_directories(test_weighted_contact PRIVATE ${CMAKE_SOURCE_DIR}/src/core ${EIGEN3_INCLUDE_DIR})
+add_test(NAME WeightedContactFrictionTest COMMAND test_weighted_contact)
+add_test(NAME WeightedContactRestitutionTest COMMAND test_weighted_contact --restitution)
+add_test(NAME WeightedEdgeRestitutionTest COMMAND test_weighted_contact --restitution-edge)

@@ -71,7 +71,7 @@ enum class ContactType {
     POINT_TRIANGLE,        // Vertex vs triangle
     EDGE_EDGE,             // Edge vs edge
     WALL,                  // Vertex vs plane
-    RIGID_POINT_TRIANGLE   // Vertex vs rigid triangle
+    RIGID_POINT_TRIANGLE   // Deformable vertex/edge/triangle support vs rigid surface
 };
 
 // Contact pair from collision detection
@@ -81,6 +81,8 @@ struct ContactPair {
     // Indices (interpretation depends on type)
     // POINT_TRIANGLE: idx0 = vertex, idx1/2/3 = triangle vertices
     // EDGE_EDGE: idx0/1 = edge0 vertices, idx2/3 = edge1 vertices
+    // RIGID_POINT_TRIANGLE: first vertex_count indices are deformable support;
+    // weights interpolate witness_p. witness_q belongs to rigid_body_index.
     Index idx0, idx1, idx2, idx3;
 
     // Geometric data (computed in narrow phase)

@@ -1,12 +1,12 @@
 # AndoSim: Ando Barrier Physics
 
-![Cloth pinned at two corners, sagging under its own weight](docs/example_images/drape.gif)
+![A teal sheet falling onto and wrapping around a faceted rigid sphere, baked with AndoSim in Blender](docs/example_images/sphere-contact.gif)
 
 AndoSim is a Blender add-on that ports the SIGGRAPH 2024 method from ["A Cubic Barrier with Elasticity-Inclusive Dynamic Stiffness"](https://doi.org/10.1145/3687908) into day-to-day cloth and shell work. The solver implements the paper's barrier formulation in a C++ core (Eigen + pybind11), with the Python layer doing orchestration and UI only.
 
 ### What works today
 
-- **Elastic cloth.** The deformation gradient is measured against the live pose, so sheets stretch, sag and buckle instead of behaving like rigid planes. The animation above is a 2 m sheet pinned at two corners, baked at a 1 ms substep.
+- **Elastic cloth and a bounded rigid-sphere contact.** The animation above drops a free sheet onto a faceted sphere. Its 16 Blender-baked shape keys come from the native solver, with no post-bake mesh animation. The measured minimum clearance from the collider mesh across 866 native steps was 5.26 mm. The material settings are for demonstration, not calibrated silk.
 - **Pins hold.** Pinned vertices are projected onto their targets every step, so a corner cannot slide off its pin.
 - **Gravity and strain limitation** behave: a free sheet falls at g t²/2, and strain limiting is available per material preset.
 - **Bakes write shape keys**, one per frame, so you can scrub the result or render it directly.
@@ -14,7 +14,7 @@ AndoSim is a Blender add-on that ports the SIGGRAPH 2024 method from ["A Cubic B
 
 ### What is still being finished
 
-Rigid-mesh contact is not reliable yet. The narrow phase returns an unsigned distance, so a body that crosses a triangle is treated as being outside it again, and a fast approach can jump the barrier entirely. Cloth-versus-sphere and cloth-versus-floor-at-speed scenes will still pass through. `test_collision_detection_setup` and `test_multi_frame_stability` are marked xfail for that reason, and [docs/dev/LOCAL_VALIDATION.md](docs/dev/LOCAL_VALIDATION.md) records what was measured.
+Other contacts are not established by this demo. Moving rigid bodies, self-contact and long bakes remain unverified; the two existing broad end-to-end contact tests are still marked xfail. The [showcase notes](docs/example_images/README-showcase.md) give the native regressions, the Blender clearance check and the limits of that check.
 
 ### Try it
 
@@ -25,14 +25,21 @@ Rigid-mesh contact is not reliable yet. The narrow phase returns an unsigned dis
 
 ### Regenerating the animation
 
-The image above is rendered from the current solver, not captured by hand:
+The image above is rendered from the native solver, not animated by hand. After building the matching Blender core (see [local validation](docs/dev/LOCAL_VALIDATION.md)), run from the project root:
 
 ```bash
-blender -b --factory-startup --python docs/example_images/render_demo.py -- \
-    --scene drape --frames 30 --out /tmp/drape --dt 1 --gap 0.004
+blender -b --factory-startup --python-exit-code 1 \
+  --python docs/example_images/render_demo.py -- \
+  --scene sphere --frames 16 --dt 2 --gap .08 --render-every 1 \
+  --res 960 540 --samples 32 --cam-dir .9 -1 .65 \
+  --core build/ando_barrier_core.cpython-313-x86_64-linux-gnu.so \
+  --out scratch/sphere-followup/wide16
+ffmpeg -framerate 12 -i scratch/sphere-followup/wide16/f%03d.png \
+  -filter_complex '[0:v]tpad=stop_mode=clone:stop_duration=0.5,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3' \
+  -loop 0 docs/example_images/sphere-contact.gif
 ```
 
-`--scene` also accepts `wave` (a corrugated sheet pinned at two corners) and `swing` (a curtain pinned along one edge). Both currently diverge once the folds start colliding with each other, which is the contact work described above; the script refuses to render a bake that has gone non-finite. The bake writes the shape keys and the script renders each frame with Cycles, so any change to the solver can be re-shot the same way.
+The core filename must match your Blender Python ABI. The script checks the loaded module, native-step mesh clearance, finite baked keys and camera coverage before rendering. `--scene drape` preserves the original pinned-corner demo; `showcase` is a separate contact-free sail experiment.
 
 ### Want to dig deeper?
 

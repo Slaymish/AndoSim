@@ -3,6 +3,7 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <limits>
+#include <set>
 
 namespace ando_barrier {
 
@@ -21,6 +22,13 @@ void RigidBody::initialize(const std::vector<Vec3>& vertices,
                            const std::vector<Triangle>& triangles,
                            Real density) {
     m_triangles = triangles;
+    std::set<std::pair<Index,Index>> edge_set;
+    for (const auto& tri : triangles) for (int j=0;j<3;++j) {
+        Index a=tri.v[j], b=tri.v[(j+1)%3];
+        edge_set.emplace(std::min(a,b),std::max(a,b));
+    }
+    m_edges.clear();
+    for (const auto& edge : edge_set) m_edges.emplace_back(edge.first,edge.second);
 
     if (vertices.empty()) {
         m_vertices_local.clear();

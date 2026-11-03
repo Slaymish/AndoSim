@@ -3,6 +3,9 @@
 #include <vector>
 
 #include "elasticity.h"
+#include "pcg_solver.h"
+#include <Eigen/Eigenvalues>
+#include <string>
 #include "integrator.h"
 #include "mesh.h"
 #include "state.h"
@@ -51,7 +54,36 @@ Real mean_edge(const std::vector<Vec3>& p, const std::vector<Triangle>& tris) {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--hessian") {
+        Mesh mesh;
+        Material mat;
+        mesh.initialize({Vec3(0,0,0),Vec3(1,0,1),Vec3(.4,1,.3)},
+                        {Triangle(0,1,2)}, mat);
+        State state; state.initialize(mesh);
+        std::vector<Triplet> triplets;
+        Elasticity::compute_hessian(mesh, state, triplets);
+        SparseMatrix sparse(9,9); sparse.setFromTriplets(triplets.begin(),triplets.end());
+        MatX H(sparse);
+        Eigen::SelfAdjointEigenSolver<MatX> eig(H);
+        VecX translation = VecX::Zero(9);
+        for (int i=0;i<3;++i) translation[3*i]=1;
+        Real error=(H*translation).norm()/H.norm();
+        std::cout << "min eigenvalue=" << eig.eigenvalues().minCoeff()
+                  << " translation error=" << error << std::endl;
+        if (eig.eigenvalues().minCoeff() < -Real(.001) || error > Real(1e-5)) return 1;
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--pcg-scale") {
+        // A small SPD system is well-conditioned regardless of RHS magnitude.
+        SparseMatrix A(3,3); A.setIdentity();
+        VecX b=VecX::Constant(3, Real(1e-9)), x=VecX::Zero(3);
+        bool ok=PCGSolver::solve(A,b,x,Real(1e-4),10);
+        Real residual=(A*x-b).norm()/b.norm();
+        std::cout << "scaled SPD converged=" << ok << " residual=" << residual << std::endl;
+        return ok && residual < Real(1e-4) ? 0 : 1;
+    }
+
     // A membrane stretched 50% beyond its rest length must contract. The rest
     // pose lives in the mesh; the current pose lives in the state.
     const int nx = 5, ny = 5;
